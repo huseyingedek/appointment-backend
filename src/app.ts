@@ -11,7 +11,6 @@ app.use(express.json({ limit: '50mb' }));
 
 app.use('/api', router);
 
-// Error handling middleware
 app.use(errorHandler);
  
 export default app;

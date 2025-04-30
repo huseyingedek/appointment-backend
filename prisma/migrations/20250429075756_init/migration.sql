@@ -5,7 +5,7 @@ CREATE TYPE "UserRole" AS ENUM ('USER', 'PROVIDER', 'ADMIN');
 CREATE TABLE "User" (
     "id" SERIAL NOT NULL,
     "email" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
+    "username" TEXT NOT NULL,
     "phone" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
