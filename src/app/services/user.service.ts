@@ -107,6 +107,18 @@ export class UserService {
     return user;
   }
 
+  // Kullanıcı ve hesap bilgilerini birlikte getir
+  async getUserWithAccount(userId: number) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        account: true
+      }
+    });
+    
+    return user;
+  }
+
   // Employee oluşturma (Owner tarafından)
   async createEmployee(data: CreateUserInput, ownerAccountId: number): Promise<User> {
     // Owner'ın kendi işletmesi için personel oluşturması

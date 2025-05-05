@@ -27,6 +27,13 @@ export class AuthController {
       // Token oluştur
       const token = generateToken(user);
       
+      // Eğer kullanıcı OWNER veya EMPLOYEE ise hesap bilgilerini getir
+      let accountInfo = null;
+      if (user.accountId && (user.role === 'OWNER' || user.role === 'EMPLOYEE')) {
+        const userWithAccount = await userService.getUserWithAccount(user.id);
+        accountInfo = userWithAccount?.account || null;
+      }
+      
       res.status(200).json({
         token,
         user: {
@@ -35,7 +42,8 @@ export class AuthController {
           email: user.email,
           role: user.role,
           accountId: user.accountId
-        }
+        },
+        account: accountInfo
       });
     } catch (error) {
       console.error('Login error:', error);
@@ -58,15 +66,22 @@ export class AuthController {
         return;
       }
       
+      // Eğer kullanıcı OWNER veya EMPLOYEE ise hesap bilgilerini getir
+      let accountInfo = null;
+      if (user.accountId && (user.role === 'OWNER' || user.role === 'EMPLOYEE')) {
+        const userWithAccount = await userService.getUserWithAccount(user.id);
+        accountInfo = userWithAccount?.account || null;
+      }
+      
       res.status(200).json({
         user: {
           id: user.id,
           username: user.username,
           email: user.email,
           role: user.role,
-          // @ts-ignore - User modelinde accountId özelliği var
           accountId: user.accountId
-        }
+        },
+        account: accountInfo
       });
     } catch (error) {
       console.error('Get current user error:', error);
