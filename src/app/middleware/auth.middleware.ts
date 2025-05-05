@@ -1,70 +1,47 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import prisma from '../../config/prisma';
-import { AppError } from '../utils/error.util';
+import { verifyToken, TokenPayload } from '../utils/jwt';
+import { UserRole } from '@prisma/client';
 
 declare global {
   namespace Express {
     interface Request {
-      user?: any;
+      user?: TokenPayload;
     }
   }
 }
 
-export class AuthMiddleware {
-  public static async authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const token = req.headers.authorization?.replace('Bearer ', '');
-
-      if (!token) {
-        throw new AppError(401, 'Yetkilendirme gerekli');
-      }
-
-      const jwtSecret = process.env.JWT_SECRET || 'randevu-sistemi-secret-key';
-      
-      const decoded = jwt.verify(token, jwtSecret) as { userId: number };
-      
-      const user = await prisma.user.findUnique({
-        where: { id: decoded.userId },
-        select: {
-          id: true,
-          email: true,
-          username: true,
-          phone: true,
-          role: true
-        }
-      });
-
-      if (!user) {
-        throw new AppError(401, 'Kullanıcı bulunamadı');
-      }
-
-      req.user = user;
-      next();
-    } catch (error) {
-      if (error instanceof jwt.JsonWebTokenError) {
-        next(new AppError(401, 'Geçersiz token'));
-      } else {
-        next(error);
-      }
+export const authenticate = (req: Request, res: Response, next: NextFunction): void => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ message: 'Yetkilendirme başarısız: Token bulunamadı' });
+      return;
     }
+
+    const token = authHeader.split(' ')[1];
+    const decodedToken = verifyToken(token);
+    
+    req.user = decodedToken;
+    next();
+  } catch (error) {
+    res.status(401).json({ message: 'Yetkilendirme başarısız: Geçersiz token' });
+    return;
   }
+};
 
-  public static authorizeAdmin(req: Request, res: Response, next: NextFunction): void {
-    try {
-      if (!req.user) {
-        throw new AppError(401, 'Yetkilendirme gerekli');
-      }
-
-      if (req.user.role !== 'ADMIN') {
-        throw new AppError(403, 'Bu işlem için admin yetkisi gerekli');
-      }
-
-      next();
-    } catch (error) {
-      next(error);
+export const authorizeRole = (roles: UserRole[]) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ message: 'Yetkilendirme başarısız' });
+      return;
     }
-  }
-}
 
-export default AuthMiddleware; 
+    if (!roles.includes(req.user.role as UserRole)) {
+      res.status(403).json({ message: 'Bu işlem için yetkiniz bulunmamaktadır' });
+      return;
+    }
+
+    next();
+  };
+};

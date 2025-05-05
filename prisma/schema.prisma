@@ -7,19 +7,159 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Accounts {
+  id               Int            @id @default(autoincrement()) @map("AccountID")
+  businessName     String         @map("BusinessName")
+  contactPerson    String?        @map("ContactPerson")
+  email            String?        @unique @map("Email")
+  phone            String?        @map("Phone")
+  subscriptionPlan String?        @map("SubscriptionPlan")
+  createdAt        DateTime       @default(now()) @map("CreatedAt")
+  isActive         Boolean        @default(true) @map("IsActive")
+  appointments     Appointments[]
+  clients          Clients[]
+  services         Services[]
+  staff            Staff[]
+  users            User[]
+
+  @@map("Accounts")
+}
+
+model Appointments {
+  id              Int               @id @default(autoincrement()) @map("AppointmentID")
+  accountId       Int               @map("AccountID")
+  customerName    String            @map("CustomerName")
+  serviceId       Int               @map("ServiceID")
+  appointmentDate DateTime          @map("AppointmentDate")
+  status          AppointmentStatus @default(Planned) @map("Status")
+  notes           String?           @map("Notes")
+  createdAt       DateTime          @default(now()) @map("CreatedAt")
+  account         Accounts          @relation(fields: [accountId], references: [id])
+  service         Services          @relation(fields: [serviceId], references: [id])
+
+  @@map("Appointments")
+}
+
+model Clients {
+  id        Int      @id @default(autoincrement()) @map("ClientID")
+  accountId Int      @map("AccountID")
+  firstName String?  @map("FirstName")
+  lastName  String?  @map("LastName")
+  phone     String?  @map("Phone")
+  email     String?  @map("Email")
+  createdAt DateTime @default(now()) @map("CreatedAt")
+  account   Accounts @relation(fields: [accountId], references: [id])
+  sales     Sales[]
+
+  @@map("Clients")
+}
+
+model Sales {
+  id                Int        @id @default(autoincrement()) @map("SaleID")
+  clientId          Int        @map("ClientID")
+  serviceId         Int        @map("ServiceID")
+  saleDate          DateTime   @default(now()) @map("SaleDate")
+  remainingSessions Int        @map("RemainingSessions")
+  payments          Payments[]
+  client            Clients    @relation(fields: [clientId], references: [id])
+  service           Services   @relation(fields: [serviceId], references: [id])
+  sessions          Sessions[]
+
+  @@map("Sales")
+}
+
+model Payments {
+  id            Int           @id @default(autoincrement()) @map("PaymentID")
+  saleId        Int           @map("SaleID")
+  paymentDate   DateTime      @default(now()) @map("PaymentDate")
+  amountPaid    Decimal       @map("AmountPaid")
+  paymentMethod PaymentMethod @default(Cash) @map("PaymentMethod")
+  notes         String?       @map("Notes")
+  sale          Sales         @relation(fields: [saleId], references: [id])
+
+  @@map("Payments")
+}
+
+model Services {
+  id              Int            @id @default(autoincrement()) @map("ServiceID")
+  accountId       Int            @map("AccountID")
+  serviceName     String         @map("ServiceName")
+  description     String?        @map("Description")
+  price           Decimal        @map("Price")
+  durationMinutes Int?           @map("DurationMinutes")
+  sessionCount    Int            @default(1) @map("SessionCount")
+  isActive        Boolean        @default(true) @map("IsActive")
+  createdAt       DateTime       @default(now()) @map("CreatedAt")
+  sales           Sales[]
+  appointments    Appointments[]
+  account         Accounts       @relation(fields: [accountId], references: [id])
+
+  @@map("Services")
+}
+
+model Sessions {
+  id          Int           @id @default(autoincrement()) @map("SessionID")
+  saleId      Int           @map("SaleID")
+  staffId     Int?          @map("StaffID")
+  sessionDate DateTime      @map("SessionDate")
+  status      SessionStatus @default(Scheduled) @map("Status")
+  notes       String?       @map("Notes")
+  createdAt   DateTime      @default(now()) @map("CreatedAt")
+  sale        Sales         @relation(fields: [saleId], references: [id])
+  staff       Staff?        @relation(fields: [staffId], references: [id])
+
+  @@map("Sessions")
+}
+
+model Staff {
+  id        Int        @id @default(autoincrement()) @map("StaffID")
+  accountId Int        @map("AccountID")
+  fullName  String     @map("FullName")
+  role      String?    @map("Role")
+  phone     String?    @map("Phone")
+  email     String?    @map("Email")
+  isActive  Boolean    @default(true) @map("IsActive")
+  createdAt DateTime   @default(now()) @map("CreatedAt")
+  sessions  Sessions[]
+  account   Accounts   @relation(fields: [accountId], references: [id])
+
+  @@map("Staff")
+}
+
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  phone     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  password  String
-  role      UserRole @default(USER)
+  id        Int       @id @default(autoincrement())
   username  String
+  email     String    @unique
+  password  String
+  phone     String?
+  role      UserRole  @default(EMPLOYEE)
+  accountId Int?
+  account   Accounts? @relation(fields: [accountId], references: [id])
+
+  @@map("Users")
+}
+
+enum AppointmentStatus {
+  Planned
+  Completed
+  Cancelled
+}
+
+enum PaymentMethod {
+  Cash
+  CreditCard
+  Transfer
+  Other
+}
+
+enum SessionStatus {
+  Scheduled
+  Completed
+  Missed
 }
 
 enum UserRole {
-  USER
-  PROVIDER
+  EMPLOYEE
+  OWNER
   ADMIN
 }

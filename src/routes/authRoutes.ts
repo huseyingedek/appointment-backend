@@ -1,33 +1,20 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import authController from '../app/controllers/auth.controller';
+// src/routes/authRoutes.ts
+import express from 'express';
+import { AuthController } from '../app/controllers/auth.controller';
+import { authenticate } from '../app/middleware/auth.middleware';
 import ValidationMiddleware from '../app/middleware/validation.middleware';
 
-const router = Router();
+const router = express.Router();
+const authController = new AuthController();
 
-router.post(
-    '/register',
-    ValidationMiddleware.validateRegister,
-    ValidationMiddleware.validate,
-    async (req: Request, res: Response, next: NextFunction) => {
-        try {
-            await authController.register(req, res);
-        } catch (error) {
-            next(error);
-        }
-    }
+// Login route
+router.post('/login',
+  ValidationMiddleware.validateLogin,
+  ValidationMiddleware.validate,
+  authController.login.bind(authController)
 );
 
-router.post(
-    '/login',
-    ValidationMiddleware.validateLogin,
-    ValidationMiddleware.validate,
-    async (req: Request, res: Response, next: NextFunction) => {
-        try {
-            await authController.login(req, res);
-        } catch (error) {
-            next(error);
-        }
-    }
-);
+// Giriş yapmış kullanıcı bilgilerini getirme
+router.get('/me', authenticate, authController.getCurrentUser.bind(authController));
 
 export default router;

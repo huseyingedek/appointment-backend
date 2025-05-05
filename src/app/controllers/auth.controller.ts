@@ -1,98 +1,76 @@
+// src/controllers/authController.ts
 import { Request, Response } from 'express';
-import { UserRole } from '@prisma/client';
-import authService from '../services/auth.service';
+import { UserService, LoginInput } from '../services/user.service';
+import { generateToken } from '../utils/jwt';
+import { validationResult } from 'express-validator';
 
+const userService = new UserService();
 
-class AuthController {
-  /**
-   * @route POST /auth/register
-   * @param req Express Request nesnesi
-   * @param res Express Response nesnesi
-   * @returns Oluşturulan kullanıcı bilgisi veya hata mesajı
-   */
-  public async register(req: Request, res: Response): Promise<Response> {
+export class AuthController {
+  // Kullanıcı giriş işlemi
+  async login(req: Request, res: Response): Promise<void> {
     try {
-      const { email, username, password, phone, role } = req.body;
-
-      const newUser = await authService.registerUser({
-        email,
-        username,
-        password,
-        phone,
-        role: role as UserRole
-      });
-
-      return res.status(201).json({
-        success: true,
-        message: 'Kullanıcı başarıyla oluşturuldu.',
-        data: newUser
-      });
-
-    } catch (error) {
-      if (error instanceof Error) {
-        const errorMessage = error.message;
-        
-        if (errorMessage.includes('email formatı') || 
-            errorMessage.includes('zaten kullanılıyor') || 
-            errorMessage.includes('Geçersiz rol')) {
-          return res.status(400).json({
-            success: false,
-            message: errorMessage
-          });
-        }
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({ errors: errors.array() });
+        return;
       }
 
-      console.error('Register error:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Kullanıcı oluşturulurken bir hata oluştu.',
-        error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+      const loginData: LoginInput = req.body;
+      const user = await userService.validateUser(loginData);
+      
+      if (!user) {
+        res.status(401).json({ message: 'Geçersiz email veya şifre' });
+        return;
+      }
+      
+      // Token oluştur
+      const token = generateToken(user);
+      
+      res.status(200).json({
+        token,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          accountId: user.accountId
+        }
       });
+    } catch (error) {
+      console.error('Login error:', error);
+      res.status(500).json({ message: 'Sunucu hatası' });
     }
   }
 
-  /**
-   * @route POST /auth/login
-   * @param req Express Request nesnesi
-   * @param res Express Response nesnesi
-   * @returns Kullanıcı bilgisi ve token veya hata mesajı
-   */
-  public async login(req: Request, res: Response): Promise<Response> {
+  // Mevcut kullanıcı bilgilerini getirme
+  async getCurrentUser(req: Request, res: Response): Promise<void> {
     try {
-      const { email, password } = req.body;
-
-      const userData = await authService.loginUser({
-        email,
-        password
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: 'Giriş başarılı.',
-        data: userData
-      });
-
-    } catch (error) {
-      if (error instanceof Error) {
-        const errorMessage = error.message;
-        
-        if (errorMessage.includes('Kullanıcı bulunamadı') || 
-            errorMessage.includes('Hatalı şifre')) {
-          return res.status(401).json({
-            success: false,
-            message: errorMessage
-          });
-        }
+      if (!req.user || !req.user.userId) {
+        res.status(401).json({ message: 'Yetkilendirme başarısız' });
+        return;
       }
-
-      console.error('Login error:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Giriş yapılırken bir hata oluştu.',
-        error: error instanceof Error ? error.message : 'Bilinmeyen hata'
+      
+      const user = await userService.findUserById(req.user.userId);
+      
+      if (!user) {
+        res.status(404).json({ message: 'Kullanıcı bulunamadı' });
+        return;
+      }
+      
+      res.status(200).json({
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          // @ts-ignore - User modelinde accountId özelliği var
+          accountId: user.accountId
+        }
       });
+    } catch (error) {
+      console.error('Get current user error:', error);
+      res.status(500).json({ message: 'Sunucu hatası' });
     }
   }
 }
-
-export default new AuthController();

@@ -1,130 +1,72 @@
-import prisma from '../../config/prisma';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import prisma from '../../config/prisma';
+import { AppError } from '../utils/error.util';
 import { UserRole } from '@prisma/client';
 
-interface RegisterUserDTO {
-  email: string;
-  username: string;
-  password: string;
-  phone?: string;
-  role?: UserRole;
-}
-
-interface LoginUserDTO {
-  email: string;
-  password: string;
-}
-
-interface UserResponseDTO {
-  id: number;
-  email: string;
-  username: string;
-  phone?: string | null;
-  role: UserRole;
-  createdAt: Date;
-}
-
-interface AuthResponseDTO extends UserResponseDTO {
-  token: string;
-}
+const JWT_SECRET = process.env.JWT_SECRET || 'randevu-sistemi-secret-key';
 
 class AuthService {
+  public static async register(data: {
+    username: string;
+    email: string;
+    password: string;
+    phone?: string;
+    role?: UserRole;
+  }) {
+    const existing = await prisma.user.findUnique({
+      where: { email: data.email }
+    });
 
-  public async registerUser(userData: RegisterUserDTO): Promise<UserResponseDTO> {
-    // Email zaten kullanılıyor mu kontrolü
-    const isEmailUnique = await this.isEmailUnique(userData.email);
-    if (!isEmailUnique) {
-      throw new Error('Bu email adresi zaten kullanılıyor.');
+    if (existing) {
+      throw new AppError(400, 'Bu e-posta adresi zaten kullanımda');
     }
 
-    // Rol geçerli mi kontrolü
-    if (userData.role && !this.isValidRole(userData.role)) {
-      throw new Error(`Geçersiz rol değeri. Geçerli roller: ${Object.values(UserRole).join(', ')}`);
-    }
+    const hashedPassword = await bcrypt.hash(data.password, 10);
 
-    const hashedPassword = await this.hashPassword(userData.password);
-    
-    return prisma.user.create({
+    const user = await prisma.user.create({
       data: {
-        email: userData.email,
-        username: userData.username,
+        username: data.username,
+        email: data.email,
         password: hashedPassword,
-        phone: userData.phone || null,
-        role: userData.role || UserRole.USER
+        phone: data.phone || '',
+        // @ts-ignore
+        role: data.role || UserRole.EMPLOYEE
       },
       select: {
         id: true,
         email: true,
         username: true,
         phone: true,
-        role: true,
-        createdAt: true
+        role: true
       }
     });
+
+    return user;
   }
 
-  public async loginUser(loginData: LoginUserDTO): Promise<AuthResponseDTO> {
+  public static async login(data: { email: string; password: string }) {
     const user = await prisma.user.findUnique({
-      where: { email: loginData.email },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        password: true,
-        phone: true,
-        role: true,
-        createdAt: true
-      }
+      where: { email: data.email }
     });
 
     if (!user) {
-      throw new Error('Kullanıcı bulunamadı.');
+      throw new AppError(401, 'Kullanıcı bulunamadı');
     }
 
-    const isPasswordValid = await this.comparePasswords(loginData.password, user.password);
-    if (!isPasswordValid) {
-      throw new Error('Hatalı şifre.');
+    const isMatch = await bcrypt.compare(data.password, user.password);
+    if (!isMatch) {
+      throw new AppError(401, 'Şifre yanlış');
     }
 
-    const token = this.generateToken(user.id);
-
-    const { password, ...userWithoutPassword } = user;
-
-    return {
-      ...userWithoutPassword,
-      token
-    };
-  }
-
-  private async isEmailUnique(email: string): Promise<boolean> {
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
-    });
-    return !existingUser;
-  }
-
-  private isValidRole(role: string): boolean {
-    return Object.values(UserRole).includes(role as UserRole);
-  }
-
-  private async hashPassword(password: string): Promise<string> {
-    return bcrypt.hash(password, 10);
-  }
-
-  private async comparePasswords(plainPassword: string, hashedPassword: string): Promise<boolean> {
-    return bcrypt.compare(plainPassword, hashedPassword);
-  }
-
-  private generateToken(userId: number): string {
-    const secret = process.env.JWT_SECRET || 'randevu-sistemi-secret-key';
-    
-    return jwt.sign(
-      { userId },
-      secret,
-      { expiresIn: '1d' }
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
     );
+
+    return token;
   }
 }
 
-export default new AuthService(); 
+export default AuthService;
