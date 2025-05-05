@@ -30,7 +30,7 @@ export interface LoginInput {
 }
 
 export class UserService {
-  // Kullanıcı oluşturma
+
   async createUser(data: CreateUserInput): Promise<User> {
     const hashedPassword = await bcrypt.hash(data.password, 10);
     
@@ -42,14 +42,11 @@ export class UserService {
     });
   }
 
-  // Owner ve Account oluşturma (Admin tarafından)
   async createOwnerWithAccount(data: CreateOwnerInput): Promise<User> {
     const hashedPassword = await bcrypt.hash(data.password, 10);
     
-    // Transaction kullanarak hem account hem de owner oluşturma
     return prisma.$transaction(async (tx) => {
-      // Önce Account oluştur
-      // @ts-ignore
+
       const account = await tx.accounts.create({
         data: {
           businessName: data.businessName,
@@ -60,37 +57,31 @@ export class UserService {
         },
       });
       
-      // Sonra owner rolünde kullanıcı oluştur
       return tx.user.create({
         data: {
           username: data.username,
           email: data.email,
           password: hashedPassword,
           phone: data.phone,
-          // @ts-ignore
           role: UserRole.OWNER,
-          // @ts-ignore
           accountId: account.id,
         },
       });
     });
   }
 
-  // Email ile kullanıcı bulma
   async findUserByEmail(email: string): Promise<User | null> {
     return prisma.user.findUnique({
       where: { email },
     });
   }
 
-  // ID ile kullanıcı bulma
   async findUserById(id: number): Promise<User | null> {
     return prisma.user.findUnique({
       where: { id },
     });
   }
 
-  // Giriş işlemi için
   async validateUser(data: LoginInput): Promise<User | null> {
     const user = await this.findUserByEmail(data.email);
     
@@ -107,7 +98,6 @@ export class UserService {
     return user;
   }
 
-  // Kullanıcı ve hesap bilgilerini birlikte getir
   async getUserWithAccount(userId: number) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -119,35 +109,30 @@ export class UserService {
     return user;
   }
 
-  // Employee oluşturma (Owner tarafından)
   async createEmployee(data: CreateUserInput, ownerAccountId: number): Promise<User> {
-    // Owner'ın kendi işletmesi için personel oluşturması
     if (data.accountId !== ownerAccountId) {
       throw new Error('Sadece kendi işletmeniz için personel ekleyebilirsiniz');
     }
     
     const hashedPassword = await bcrypt.hash(data.password, 10);
     
-    // Transaction kullanarak hem user hem de staff oluşturma
     return prisma.$transaction(async (tx) => {
-      // Önce user oluştur
+
       const user = await tx.user.create({
         data: {
           ...data,
           password: hashedPassword,
-          // @ts-ignore
           role: UserRole.EMPLOYEE,
         },
       });
       
-      // Sonra staff tablosuna da ekle
-      // @ts-ignore
+
       await tx.staff.create({
         data: {
           fullName: data.username,
           email: data.email,
           phone: data.phone,
-          role: 'Personel', // veya başka bir rol belirleyebilirsiniz
+          role: 'Personel',
           isActive: true,
           accountId: ownerAccountId
         }
@@ -157,9 +142,8 @@ export class UserService {
     });
   }
 
-  // Tüm işletmeleri getir (Sadece Admin için)
   async getAllAccounts() {
-    // Tüm işletmeleri getir, sahiplerini de include et
+
     return prisma.accounts.findMany({
       include: {
         users: {
@@ -181,7 +165,7 @@ export class UserService {
     });
   }
   
-  // İşletme detayını getir (Sadece Admin için)
+
   async getAccountById(accountId: number) {
     return prisma.accounts.findUnique({
       where: { id: accountId },
@@ -197,13 +181,13 @@ export class UserService {
         },
         services: true,
         clients: {
-          take: 5, // Son 5 müşteriyi getir
+          take: 5,
           orderBy: {
             createdAt: 'desc'
           }
         },
         appointments: {
-          take: 5, // Son 5 randevuyu getir
+          take: 5,
           orderBy: {
             createdAt: 'desc'
           }
@@ -212,7 +196,6 @@ export class UserService {
     });
   }
 
-  // İşletme bilgilerini güncelleme (Sadece Admin için)
   async updateAccount(accountId: number, data: {
     businessName?: string;
     contactPerson?: string;
@@ -227,8 +210,6 @@ export class UserService {
     });
   }
 
-  // İşletme silme (Sadece Admin için)
-  // Not: Gerçek bir silme işlemi yapmak yerine işletmeyi pasife alma
   async deactivateAccount(accountId: number) {
     return prisma.accounts.update({
       where: { id: accountId },
@@ -238,19 +219,110 @@ export class UserService {
     });
   }
 
-  // İşletmeyi tamamen silme (Dikkatli kullanılmalı)
   async deleteAccount(accountId: number) {
-    // NOT: Gerçek uygulamada ilişkili verileri silmek veya arşivlemek için
-    // daha kapsamlı bir işlem gerekebilir. Bu örnek basitleştirilmiştir.
     
-    // İşletmeye ait kullanıcıları sil
     await prisma.user.deleteMany({
       where: { accountId }
     });
     
-    // İşletmeyi sil
     return prisma.accounts.delete({
       where: { id: accountId }
+    });
+  }
+
+  async getEmployeesByAccountId(accountId: number) {
+    return prisma.user.findMany({
+      where: { 
+        accountId: accountId,
+        role: UserRole.EMPLOYEE 
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        phone: true,
+        role: true
+      }
+    });
+  }
+
+  async getEmployeeById(employeeId: number, accountId: number) {
+    return prisma.user.findFirst({
+      where: { 
+        id: employeeId,
+        accountId: accountId,
+        role: UserRole.EMPLOYEE 
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        phone: true,
+        role: true
+      }
+    });
+  }
+
+  async updateEmployee(employeeId: number, accountId: number, data: {
+    username?: string;
+    email?: string;
+    phone?: string;
+    password?: string;
+  }) {
+    const employee = await this.getEmployeeById(employeeId, accountId);
+    if (!employee) {
+      throw new Error('Personel bulunamadı veya bu işletmeye ait değil');
+    }
+
+    const updateData: any = { ...data };
+    if (data.password) {
+      updateData.password = await bcrypt.hash(data.password, 10);
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: employeeId },
+      data: updateData,
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        phone: true,
+        role: true
+      }
+    });
+
+    if (data.username || data.email || data.phone) {
+      await prisma.staff.updateMany({
+        where: { 
+          email: employee.email,
+          accountId: accountId 
+        },
+        data: {
+          fullName: data.username || employee.username,
+          email: data.email || employee.email,
+          phone: data.phone || employee.phone
+        }
+      });
+    }
+
+    return updatedUser;
+  }
+
+  async deleteEmployee(employeeId: number, accountId: number) {
+    const employee = await this.getEmployeeById(employeeId, accountId);
+    if (!employee) {
+      throw new Error('Personel bulunamadı veya bu işletmeye ait değil');
+    }
+
+    await prisma.staff.deleteMany({
+      where: { 
+        email: employee.email, 
+        accountId: accountId 
+      }
+    });
+
+    return prisma.user.delete({
+      where: { id: employeeId }
     });
   }
 }

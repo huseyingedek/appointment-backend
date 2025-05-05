@@ -120,19 +120,34 @@ export class ValidationMiddleware {
             .withMessage('Geçerli bir email adresi giriniz')
             .normalizeEmail(),
 
-        body('password')
-            .trim()
-            .notEmpty()
-            .withMessage('Şifre zorunludur')
-            .isLength({ min: 8 })
-            .withMessage('Şifre en az 8 karakter olmalıdır'),
-        
         body('phone')
             .optional()
             .trim()
             .isLength({ min: 10 })
             .withMessage('Telefon numarası en az 10 karakter olmalıdır'),
         
+    ];
+
+    public static validateEmployeeUpdate: ValidationChain[] = [
+        body('username')
+            .optional()
+            .trim()
+            .isLength({ min: 3 })
+            .withMessage('Kullanıcı adı en az 3 karakter olmalıdır'),
+
+        body('email')
+            .optional()
+            .trim()
+            .isEmail()
+            .withMessage('Geçerli bir email adresi giriniz')
+            .normalizeEmail(),
+
+        
+        body('phone')
+            .optional()
+            .trim()
+            .isLength({ min: 10 })
+            .withMessage('Telefon numarası en az 10 karakter olmalıdır')
     ];
 
     public static validateServiceCreation: ValidationChain[] = [
