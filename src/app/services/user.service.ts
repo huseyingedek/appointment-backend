@@ -144,4 +144,101 @@ export class UserService {
       return user;
     });
   }
+
+  // Tüm işletmeleri getir (Sadece Admin için)
+  async getAllAccounts() {
+    // Tüm işletmeleri getir, sahiplerini de include et
+    return prisma.accounts.findMany({
+      include: {
+        users: {
+          where: {
+            role: UserRole.OWNER
+          },
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            phone: true,
+            role: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+  }
+  
+  // İşletme detayını getir (Sadece Admin için)
+  async getAccountById(accountId: number) {
+    return prisma.accounts.findUnique({
+      where: { id: accountId },
+      include: {
+        users: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            phone: true,
+            role: true
+          }
+        },
+        services: true,
+        clients: {
+          take: 5, // Son 5 müşteriyi getir
+          orderBy: {
+            createdAt: 'desc'
+          }
+        },
+        appointments: {
+          take: 5, // Son 5 randevuyu getir
+          orderBy: {
+            createdAt: 'desc'
+          }
+        }
+      }
+    });
+  }
+
+  // İşletme bilgilerini güncelleme (Sadece Admin için)
+  async updateAccount(accountId: number, data: {
+    businessName?: string;
+    contactPerson?: string;
+    email?: string;
+    phone?: string;
+    subscriptionPlan?: string;
+    isActive?: boolean;
+  }) {
+    return prisma.accounts.update({
+      where: { id: accountId },
+      data
+    });
+  }
+
+  // İşletme silme (Sadece Admin için)
+  // Not: Gerçek bir silme işlemi yapmak yerine işletmeyi pasife alma
+  async deactivateAccount(accountId: number) {
+    return prisma.accounts.update({
+      where: { id: accountId },
+      data: {
+        isActive: false
+      }
+    });
+  }
+
+  // İşletmeyi tamamen silme (Dikkatli kullanılmalı)
+  async deleteAccount(accountId: number) {
+    // NOT: Gerçek uygulamada ilişkili verileri silmek veya arşivlemek için
+    // daha kapsamlı bir işlem gerekebilir. Bu örnek basitleştirilmiştir.
+    
+    // İşletmeye ait kullanıcıları sil
+    await prisma.user.deleteMany({
+      where: { accountId }
+    });
+    
+    // İşletmeyi sil
+    return prisma.accounts.delete({
+      where: { id: accountId }
+    });
+  }
 }

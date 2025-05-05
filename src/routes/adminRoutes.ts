@@ -17,4 +17,39 @@ router.post('/owners',
   adminController.createOwner.bind(adminController)
 );
 
+// Tüm işletmeleri listeleme
+router.get('/accounts',
+  authenticate,
+  authorizeRole([UserRole.ADMIN]),
+  adminController.getAllAccounts.bind(adminController)
+);
+
+// İşletme detayını görüntüleme
+router.get('/accounts/:id',
+  authenticate,
+  authorizeRole([UserRole.ADMIN]),
+  adminController.getAccountById.bind(adminController)
+);
+
+// İşletme bilgilerini güncelleme
+router.put('/accounts/:id',
+  authenticate,
+  authorizeRole([UserRole.ADMIN]),
+  adminController.updateAccount.bind(adminController)
+);
+
+// İşletmeyi pasife alma
+router.patch('/accounts/:id/deactivate',
+  authenticate,
+  authorizeRole([UserRole.ADMIN]),
+  adminController.deactivateAccount.bind(adminController)
+);
+
+// İşletmeyi silme (tamamen)
+router.delete('/accounts/:id',
+  authenticate,
+  authorizeRole([UserRole.ADMIN]),
+  adminController.deleteAccount.bind(adminController)
+);
+
 export default router;
