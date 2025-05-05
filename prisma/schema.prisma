@@ -163,3 +163,5 @@ enum UserRole {
   OWNER
   ADMIN
 }
+
+//DATABASE_URL="postgresql://RandevuDB_owner:npg_M5tyC0iuUWpe@ep-steep-rain-a4civ5w7-pooler.us-east-1.aws.neon.tech/RandevuDB?sslmode=require"

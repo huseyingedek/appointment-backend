@@ -83,7 +83,59 @@ router.get('/appointments/:date',
   ownerController.getAppointmentsByDate.bind(ownerController)
 );
 
+// Satış işlemleri
+router.post('/sales',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ValidationMiddleware.validateSaleCreation,
+  ValidationMiddleware.validate,
+  ownerController.createSale.bind(ownerController)
+);
 
+router.get('/sales',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.getSales.bind(ownerController)
+);
 
+router.get('/sales/:id',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.getSaleById.bind(ownerController)
+);
+
+router.get('/clients/:id/sales',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.getClientSales.bind(ownerController)
+);
+
+// Ödeme işlemleri
+router.post('/payments',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ValidationMiddleware.validatePaymentCreation,
+  ValidationMiddleware.validate,
+  ownerController.createPayment.bind(ownerController)
+);
+
+router.get('/sales/:id/payments',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.getSalePayments.bind(ownerController)
+);
+
+// Seans işlemleri
+router.get('/clients/:id/sessions',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.getClientRemainingSessions.bind(ownerController)
+);
+
+router.post('/sales/:id/use-session',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.useSession.bind(ownerController)
+);
 
 export default router;
