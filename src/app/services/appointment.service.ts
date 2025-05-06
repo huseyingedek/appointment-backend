@@ -127,4 +127,18 @@ export class AppointmentService {
       }
     });
   }
+
+  // Belirli bir duruma göre randevuları getirme
+  async getAppointmentsByAccountIdAndStatus(accountId: number, status: AppointmentStatus) {
+    return await prisma.appointments.findMany({
+      where: {
+        accountId,
+        status
+      },
+      include: {
+        service: true
+      },
+      orderBy: { appointmentDate: 'asc' }
+    });
+  }
 } 

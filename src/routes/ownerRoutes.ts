@@ -83,6 +83,36 @@ router.get('/appointments/:date',
   ownerController.getAppointmentsByDate.bind(ownerController)
 );
 
+// Randevu güncelleme route'u
+router.put('/appointments/:id',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ValidationMiddleware.validateAppointmentUpdate,
+  ValidationMiddleware.validate,
+  ownerController.updateAppointment.bind(ownerController)
+);
+
+// Randevu silme route'u 
+router.delete('/appointments/:id',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.deleteAppointment.bind(ownerController)
+);
+
+// Randevu durumunu güncelleme route'u
+router.patch('/appointments/:id/status',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.updateAppointmentStatus.bind(ownerController)
+);
+
+// Duruma göre randevuları listeleme route'u
+router.get('/appointments/status/:status',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.getAppointmentsByStatus.bind(ownerController)
+);
+
 // Satış işlemleri
 router.post('/sales',
   authenticate,

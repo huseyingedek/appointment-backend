@@ -1,3 +1,4 @@
+import express from 'express';
 import { Request, Response } from 'express';
 import { UserService, CreateUserInput } from '../services/user.service';
 import { ServiceService } from '../services/service.service';
@@ -5,7 +6,7 @@ import { ClientService } from '../services/client.service';
 import { AppointmentService } from '../services/appointment.service';
 import { SaleService } from '../services/sale.service';
 import { validationResult } from 'express-validator';
-import { UserRole } from '@prisma/client';
+import { UserRole, AppointmentStatus, PaymentMethod, SessionStatus } from '@prisma/client';
 
 const userService = new UserService();
 const serviceService = new ServiceService();
@@ -665,6 +666,333 @@ export class OwnerController {
     }
   }
 
+  // Randevu güncelleme
+  async updateAppointment(req: Request, res: Response): Promise<void> {
+    try {
+      const appointmentId = parseInt(req.params.id, 10);
+      
+      // Owner'ın işletme ID'sini al
+      const ownerId = req.user?.userId;
+      if (!ownerId) {
+        res.status(401).json({ 
+          success: false, 
+          message: 'Yetkilendirme başarısız' 
+        });
+        return;
+      }
+      
+      const owner = await userService.findUserById(ownerId);
+      if (!owner) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'Kullanıcı bulunamadı' 
+        });
+        return;
+      }
+      
+      const accountId = owner.accountId;
+      if (!accountId) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'İşletme bilgisi bulunamadı' 
+        });
+        return;
+      }
+      
+      // Randevuyu kontrol et
+      const appointment = await appointmentService.getAppointmentById(appointmentId);
+      if (!appointment) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'Randevu bulunamadı' 
+        });
+        return;
+      }
+      
+      // Bu randevunun işletmeye ait olup olmadığını kontrol et
+      if (appointment.accountId !== accountId) {
+        res.status(403).json({ 
+          success: false, 
+          message: 'Bu randevuya erişim yetkiniz yok' 
+        });
+        return;
+      }
+      
+      // Güncelleme verilerini hazırla
+      const updateData: any = {};
+      if (req.body.customerName) updateData.customerName = req.body.customerName;
+      if (req.body.appointmentDate) updateData.appointmentDate = new Date(req.body.appointmentDate);
+      if (req.body.notes) updateData.notes = req.body.notes;
+      if (req.body.status) updateData.status = req.body.status;
+      
+      if (req.body.serviceId) {
+        const serviceId = parseInt(req.body.serviceId, 10);
+        // Hizmetin varlığını ve işletmeye ait olduğunu kontrol et
+        const service = await serviceService.getServiceById(serviceId);
+        if (!service) {
+          res.status(404).json({ 
+            success: false, 
+            message: 'Hizmet bulunamadı' 
+          });
+          return;
+        }
+        
+        if (service.accountId !== accountId) {
+          res.status(403).json({ 
+            success: false, 
+            message: 'Bu hizmete erişim yetkiniz yok' 
+          });
+          return;
+        }
+        
+        updateData.serviceId = serviceId;
+      }
+      
+      // Randevuyu güncelle
+      const updatedAppointment = await appointmentService.updateAppointment(appointmentId, updateData);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Randevu başarıyla güncellendi',
+        appointment: updatedAppointment
+      });
+    } catch (error) {
+      console.error('Update appointment error:', error);
+      
+      if (error instanceof Error) {
+        res.status(400).json({ 
+          success: false, 
+          message: error.message 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: 'Randevu güncellenirken bir hata oluştu' 
+        });
+      }
+    }
+  }
+
+  // Randevu silme
+  async deleteAppointment(req: Request, res: Response): Promise<void> {
+    try {
+      const appointmentId = parseInt(req.params.id, 10);
+      
+      // Owner'ın işletme ID'sini al
+      const ownerId = req.user?.userId;
+      if (!ownerId) {
+        res.status(401).json({ 
+          success: false, 
+          message: 'Yetkilendirme başarısız' 
+        });
+        return;
+      }
+      
+      const owner = await userService.findUserById(ownerId);
+      if (!owner) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'Kullanıcı bulunamadı' 
+        });
+        return;
+      }
+      
+      const accountId = owner.accountId;
+      if (!accountId) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'İşletme bilgisi bulunamadı' 
+        });
+        return;
+      }
+      
+      // Randevuyu kontrol et
+      const appointment = await appointmentService.getAppointmentById(appointmentId);
+      if (!appointment) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'Randevu bulunamadı' 
+        });
+        return;
+      }
+      
+      // Bu randevunun işletmeye ait olup olmadığını kontrol et
+      if (appointment.accountId !== accountId) {
+        res.status(403).json({ 
+          success: false, 
+          message: 'Bu randevuya erişim yetkiniz yok' 
+        });
+        return;
+      }
+      
+      // Randevuyu sil
+      await appointmentService.deleteAppointment(appointmentId);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Randevu başarıyla silindi'
+      });
+    } catch (error) {
+      console.error('Delete appointment error:', error);
+      
+      if (error instanceof Error) {
+        res.status(400).json({ 
+          success: false, 
+          message: error.message 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: 'Randevu silinirken bir hata oluştu' 
+        });
+      }
+    }
+  }
+
+  // Randevu durumunu güncelleme
+  async updateAppointmentStatus(req: Request, res: Response): Promise<void> {
+    try {
+      const appointmentId = parseInt(req.params.id, 10);
+      const { status } = req.body;
+      
+      if (!status || !Object.values(AppointmentStatus).includes(status as AppointmentStatus)) {
+        res.status(400).json({ 
+          success: false, 
+          message: 'Geçersiz randevu durumu. Geçerli değerler: Planned, Completed, Cancelled' 
+        });
+        return;
+      }
+      
+      // Owner'ın işletme ID'sini al
+      const ownerId = req.user?.userId;
+      if (!ownerId) {
+        res.status(401).json({ 
+          success: false, 
+          message: 'Yetkilendirme başarısız' 
+        });
+        return;
+      }
+      
+      const owner = await userService.findUserById(ownerId);
+      if (!owner) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'Kullanıcı bulunamadı' 
+        });
+        return;
+      }
+      
+      const accountId = owner.accountId;
+      if (!accountId) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'İşletme bilgisi bulunamadı' 
+        });
+        return;
+      }
+      
+      // Randevuyu kontrol et
+      const appointment = await appointmentService.getAppointmentById(appointmentId);
+      if (!appointment) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'Randevu bulunamadı' 
+        });
+        return;
+      }
+      
+      // Bu randevunun işletmeye ait olup olmadığını kontrol et
+      if (appointment.accountId !== accountId) {
+        res.status(403).json({ 
+          success: false, 
+          message: 'Bu randevuya erişim yetkiniz yok' 
+        });
+        return;
+      }
+      
+      // Randevu durumunu güncelle
+      const updatedAppointment = await appointmentService.updateAppointmentStatus(appointmentId, status as AppointmentStatus);
+      
+      res.status(200).json({
+        success: true,
+        message: `Randevu durumu '${status}' olarak güncellendi`,
+        appointment: updatedAppointment
+      });
+    } catch (error) {
+      console.error('Update appointment status error:', error);
+      
+      if (error instanceof Error) {
+        res.status(400).json({ 
+          success: false, 
+          message: error.message 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: 'Randevu durumu güncellenirken bir hata oluştu' 
+        });
+      }
+    }
+  }
+
+  // Duruma göre randevuları listeleme
+  async getAppointmentsByStatus(req: Request, res: Response): Promise<void> {
+    try {
+      const { status } = req.params;
+      
+      if (!status || !Object.values(AppointmentStatus).includes(status as AppointmentStatus)) {
+        res.status(400).json({ 
+          success: false, 
+          message: 'Geçersiz randevu durumu. Geçerli değerler: Planned, Completed, Cancelled' 
+        });
+        return;
+      }
+      
+      // Owner'ın işletme ID'sini al
+      const ownerId = req.user?.userId;
+      if (!ownerId) {
+        res.status(401).json({ 
+          success: false, 
+          message: 'Yetkilendirme başarısız' 
+        });
+        return;
+      }
+      
+      const owner = await userService.findUserById(ownerId);
+      if (!owner) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'Kullanıcı bulunamadı' 
+        });
+        return;
+      }
+      
+      const accountId = owner.accountId;
+      if (!accountId) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'İşletme bilgisi bulunamadı' 
+        });
+        return;
+      }
+      
+      // Belirli durumdaki randevuları getir
+      const appointments = await appointmentService.getAppointmentsByAccountIdAndStatus(accountId, status as AppointmentStatus);
+      
+      res.status(200).json({
+        success: true,
+        status,
+        appointments
+      });
+    } catch (error) {
+      console.error('Get appointments by status error:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Randevular alınırken bir hata oluştu' 
+      });
+    }
+  }
+
   // -- SATIŞ YÖNETİMİ --
 
   // Satış oluşturma
@@ -1235,6 +1563,7 @@ export class OwnerController {
   async useSession(req: Request, res: Response): Promise<void> {
     try {
       const saleId = parseInt(req.params.id, 10);
+      const staffId = req.body.staffId ? parseInt(req.body.staffId, 10) : undefined;
       
       // Owner'ın işletme ID'sini al
       const ownerId = req.user?.userId;
@@ -1294,13 +1623,14 @@ export class OwnerController {
       }
       
       // Seans kullanımını kaydet
-      const updatedSale = await saleService.useSession(saleId);
+      const result = await saleService.useSession(saleId, staffId);
       
       res.status(200).json({
         success: true,
         message: 'Seans kullanımı başarıyla kaydedildi',
         saleId,
-        remainingSessions: updatedSale.remainingSessions
+        remainingSessions: result.remainingSessions,
+        sessionRecord: result.sessionRecord
       });
     } catch (error) {
       console.error('Use session error:', error);

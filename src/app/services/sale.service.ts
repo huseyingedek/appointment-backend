@@ -171,9 +171,10 @@ export class SaleService {
   }
 
   // Seans kullanımını kaydetme
-  async useSession(saleId: number) {
+  async useSession(saleId: number, staffId?: number) {
     const sale = await prisma.sales.findUnique({
-      where: { id: saleId }
+      where: { id: saleId },
+      include: { service: true, client: true }
     });
     
     if (!sale) {
@@ -184,11 +185,28 @@ export class SaleService {
       throw new Error('Bu satış için kalan seans bulunmamaktadır');
     }
     
-    return await prisma.sales.update({
+    // Tamamlanan seans kaydı oluştur
+    const sessionRecord = await prisma.sessions.create({
+      data: {
+        saleId: saleId,
+        staffId: staffId || null,
+        sessionDate: new Date(),
+        status: 'Completed', // Tamamlandı olarak işaretle
+        notes: 'Seans tamamlandı'
+      }
+    });
+    
+    // Kalan seans sayısını güncelle
+    const updatedSale = await prisma.sales.update({
       where: { id: saleId },
       data: {
         remainingSessions: sale.remainingSessions - 1
       }
     });
+    
+    return {
+      ...updatedSale,
+      sessionRecord
+    };
   }
 } 

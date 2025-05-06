@@ -308,6 +308,41 @@ export class ValidationMiddleware {
             .trim()
     ];
 
+    public static validateAppointmentUpdate: ValidationChain[] = [
+        body('customerName')
+            .optional()
+            .trim()
+            .notEmpty()
+            .withMessage('Müşteri adı boş olamaz'),
+        
+        body('serviceId')
+            .optional()
+            .isInt({ min: 1 })
+            .withMessage('Geçerli bir hizmet ID giriniz'),
+        
+        body('appointmentDate')
+            .optional()
+            .isISO8601()
+            .withMessage('Geçerli bir tarih-saat formatı giriniz (ISO8601)')
+            .custom((value) => {
+                const date = new Date(value);
+                const now = new Date();
+                if (date < now) {
+                    throw new Error('Randevu tarihi geçmiş bir tarih olamaz');
+                }
+                return true;
+            }),
+        
+        body('status')
+            .optional()
+            .isIn(['Planned', 'Completed', 'Cancelled'])
+            .withMessage('Geçerli bir randevu durumu giriniz (Planned, Completed, Cancelled)'),
+        
+        body('notes')
+            .optional()
+            .trim()
+    ];
+
     public static validate = (req: Request, res: Response, next: NextFunction): void => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
