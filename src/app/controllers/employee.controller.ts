@@ -147,12 +147,13 @@ export class EmployeeController {
         success: true,
         message: 'Personel başarıyla oluşturuldu',
         employee: {
-          id: newEmployee.id,
-          username: newEmployee.username,
-          email: newEmployee.email,
-          phone: newEmployee.phone,
-          role: newEmployee.role
-        }
+          id: newEmployee.user.id,
+          username: newEmployee.user.username,
+          email: newEmployee.user.email,
+          phone: newEmployee.user.phone,
+          role: newEmployee.user.role
+        },
+        staffId: newEmployee.staffId
       });
     } catch (error) {
       console.error('Create employee error:', error);

@@ -109,7 +109,7 @@ export class UserService {
     return user;
   }
 
-  async createEmployee(data: CreateUserInput, ownerAccountId: number): Promise<User> {
+  async createEmployee(data: CreateUserInput, ownerAccountId: number): Promise<{ user: User, staffId: number }> {
     if (data.accountId !== ownerAccountId) {
       throw new Error('Sadece kendi işletmeniz için personel ekleyebilirsiniz');
     }
@@ -117,7 +117,6 @@ export class UserService {
     const hashedPassword = await bcrypt.hash(data.password, 10);
     
     return prisma.$transaction(async (tx) => {
-
       const user = await tx.user.create({
         data: {
           ...data,
@@ -126,8 +125,7 @@ export class UserService {
         },
       });
       
-
-      await tx.staff.create({
+      const staff = await tx.staff.create({
         data: {
           fullName: data.username,
           email: data.email,
@@ -138,7 +136,7 @@ export class UserService {
         }
       });
       
-      return user;
+      return { user, staffId: staff.id };
     });
   }
 
