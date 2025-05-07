@@ -87,4 +87,11 @@ export class ClientService {
       }
     });
   }
+
+  // İşletmeye ait toplam müşteri sayısını getirme
+  async getClientCountByAccountId(accountId: number) {
+    return await prisma.clients.count({
+      where: { accountId }
+    });
+  }
 } 

@@ -6,8 +6,9 @@ import { ClientService } from '../services/client.service';
 import { AppointmentService } from '../services/appointment.service';
 import { SaleService } from '../services/sale.service';
 import { validationResult } from 'express-validator';
-import { UserRole, AppointmentStatus, PaymentMethod, SessionStatus } from '@prisma/client';
+import { UserRole, AppointmentStatus, PaymentMethod, SessionStatus, PrismaClient } from '@prisma/client';
 
+const prisma = new PrismaClient();
 const userService = new UserService();
 const serviceService = new ServiceService();
 const clientService = new ClientService();
@@ -15,9 +16,7 @@ const appointmentService = new AppointmentService();
 const saleService = new SaleService();
 
 export class OwnerController {
-  // -- PERSONEL YÖNETİMİ --
   
-  // Owner tarafından personel (employee) hesabı oluşturma
   async createEmployee(req: Request, res: Response): Promise<void> {
     try {
       const errors = validationResult(req);
@@ -26,7 +25,6 @@ export class OwnerController {
         return;
       }
 
-      // Owner'ın kendi ID'sini ve işletme ID'sini al
       const ownerId = req.user?.userId;
       if (!ownerId) {
         res.status(401).json({ message: 'Yetkilendirme başarısız' });
@@ -39,22 +37,18 @@ export class OwnerController {
         return;
       }
       
-      // @ts-ignore - Mevcut User modelinde accountId eksik olabilir, ama şemaya göre var
       const ownerAccountId = owner.accountId;
       if (!ownerAccountId) {
         res.status(404).json({ message: 'İşletme bilgisi bulunamadı' });
         return;
       }
       
-      // Employee verilerini hazırla
       const employeeData: CreateUserInput = {
         ...req.body,
-        // @ts-ignore
         role: UserRole.EMPLOYEE,
-        accountId: ownerAccountId  // Owner'ın işletme ID'si
+        accountId: ownerAccountId 
       };
       
-      // Email kullanılıyor mu kontrol et
       const existingUser = await userService.findUserByEmail(employeeData.email);
       if (existingUser) {
         res.status(400).json({ 
@@ -64,10 +58,8 @@ export class OwnerController {
         return;
       }
       
-      // Personel oluşturma
       const employee = await userService.createEmployee(employeeData, ownerAccountId);
       
-      // @ts-ignore - accountId için
       const employeeAccountId = employee.accountId;
       
       res.status(201).json({
@@ -98,9 +90,57 @@ export class OwnerController {
     }
   }
 
-  // -- HİZMET YÖNETİMİ --
+  async getEmployees(req: Request, res: Response): Promise<void> {
+    try {
+      const ownerId = req.user?.userId;
+      if (!ownerId) {
+        res.status(401).json({ 
+          success: false, 
+          message: 'Yetkilendirme başarısız' 
+        });
+        return;
+      }
+      
+      const owner = await userService.findUserById(ownerId);
+      if (!owner) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'Kullanıcı bulunamadı' 
+        });
+        return;
+      }
+      
+      const accountId = owner.accountId;
+      if (!accountId) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'İşletme bilgisi bulunamadı' 
+        });
+        return;
+      }
+      
+      const staff = await prisma.staff.findMany({
+        where: { 
+          accountId,
+          isActive: true 
+        },
+        orderBy: { fullName: 'asc' }
+      });
+      
+      res.status(200).json({
+        success: true,
+        staff
+      });
+    } catch (error) {
+      console.error('Get employees error:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Personel bilgileri alınırken bir hata oluştu' 
+      });
+    }
+  }
 
-  // Hizmet oluşturma
+
   async createService(req: Request, res: Response): Promise<void> {
     try {
       const errors = validationResult(req);
@@ -109,7 +149,6 @@ export class OwnerController {
         return;
       }
 
-      // Owner'ın işletme ID'sini al
       const ownerId = req.user?.userId;
       if (!ownerId) {
         res.status(401).json({ message: 'Yetkilendirme başarısız' });
@@ -122,14 +161,12 @@ export class OwnerController {
         return;
       }
       
-      // @ts-ignore
       const accountId = owner.accountId;
       if (!accountId) {
         res.status(404).json({ message: 'İşletme bilgisi bulunamadı' });
         return;
       }
       
-      // Hizmet oluştur
       const serviceData = {
         ...req.body,
         accountId
@@ -159,10 +196,8 @@ export class OwnerController {
     }
   }
 
-  // Hizmetleri listeleme
   async getServices(req: Request, res: Response): Promise<void> {
     try {
-      // Owner'ın işletme ID'sini al
       const ownerId = req.user?.userId;
       if (!ownerId) {
         res.status(401).json({ message: 'Yetkilendirme başarısız' });
@@ -175,7 +210,6 @@ export class OwnerController {
         return;
       }
       
-      // @ts-ignore
       const accountId = owner.accountId;
       if (!accountId) {
         res.status(404).json({ message: 'İşletme bilgisi bulunamadı' });
@@ -357,6 +391,45 @@ export class OwnerController {
         return;
       }
       
+      // Benzersiz değerler için timestamp kullan
+      const timestamp = Date.now();
+      const randomNum = Math.floor(Math.random() * 10000);
+      
+      // Set default values for empty email and phone with unique values
+      if (!req.body.email || req.body.email.trim() === '') {
+        req.body.email = `geras_${timestamp}${randomNum}@mail.com`;
+      }
+      
+      if (!req.body.phone || req.body.phone.trim() === '') {
+        // ClientId ve timestamp kullanarak benzersiz numara oluştur
+        const lastDigits = (timestamp % 1000000).toString().padStart(6, '0');
+        req.body.phone = `1155${lastDigits}`;
+      }
+      
+      // Telefon numarası kontrolü - aynı işletmede aynı telefon ile başka müşteri var mı?
+      if (req.body.phone) {
+        const existingClientByPhone = await clientService.findClientByPhone(accountId, req.body.phone);
+        if (existingClientByPhone) {
+          res.status(400).json({ 
+            success: false, 
+            message: 'Bu telefon numarası ile kayıtlı bir müşteri zaten var' 
+          });
+          return;
+        }
+      }
+      
+      // E-posta kontrolü - aynı işletmede aynı e-posta ile başka müşteri var mı?
+      if (req.body.email) {
+        const existingClientByEmail = await clientService.findClientByEmail(accountId, req.body.email);
+        if (existingClientByEmail) {
+          res.status(400).json({ 
+            success: false, 
+            message: 'Bu e-posta adresi ile kayıtlı bir müşteri zaten var' 
+          });
+          return;
+        }
+      }
+      
       // Müşteri oluştur
       const clientData = {
         ...req.body,
@@ -429,7 +502,7 @@ export class OwnerController {
   // Müşteri detayı görüntüleme
   async getClientById(req: Request, res: Response): Promise<void> {
     try {
-      const clientId = parseInt(req.params.id);
+      const clientId = parseInt(req.params.id, 10);
       
       // Owner'ın işletme ID'sini al
       const ownerId = req.user?.userId;
@@ -474,6 +547,131 @@ export class OwnerController {
         success: false, 
         message: 'Müşteri bilgileri alınırken bir hata oluştu' 
       });
+    }
+  }
+
+  // Müşteri güncelleme
+  async updateClient(req: Request, res: Response): Promise<void> {
+    try {
+      const clientId = parseInt(req.params.id, 10);
+      
+      // Owner'ın işletme ID'sini al
+      const ownerId = req.user?.userId;
+      if (!ownerId) {
+        res.status(401).json({ 
+          success: false, 
+          message: 'Yetkilendirme başarısız' 
+        });
+        return;
+      }
+      
+      const owner = await userService.findUserById(ownerId);
+      if (!owner) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'Kullanıcı bulunamadı' 
+        });
+        return;
+      }
+      
+      // @ts-ignore
+      const accountId = owner.accountId;
+      if (!accountId) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'İşletme bilgisi bulunamadı' 
+        });
+        return;
+      }
+      
+      // Müşteriyi kontrol et
+      const client = await clientService.getClientById(clientId);
+      if (!client) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'Müşteri bulunamadı' 
+        });
+        return;
+      }
+      
+      // Bu müşterinin işletmeye ait olup olmadığını kontrol et
+      if (client.accountId !== accountId) {
+        res.status(403).json({ 
+          success: false, 
+          message: 'Bu müşteriyi güncelleme yetkiniz yok' 
+        });
+        return;
+      }
+      
+      // Benzersiz değerler için timestamp ve clientId kullan
+      const timestamp = Date.now();
+      const randomNum = Math.floor(Math.random() * 10000);
+      
+      // Set default values for empty email and phone with unique values
+      if (!req.body.email || req.body.email.trim() === '') {
+        req.body.email = `geras_${clientId}_${timestamp}${randomNum}@mail.com`;
+      }
+      
+      if (!req.body.phone || req.body.phone.trim() === '') {
+        // ClientId ve timestamp kullanarak benzersiz numara oluştur
+        const lastDigits = (timestamp % 1000000).toString().padStart(6, '0');
+        req.body.phone = `1155${lastDigits}`;
+      }
+      
+      // Telefon numarası kontrolü - farklı müşterilerde aynı telefon var mı?
+      if (req.body.phone && req.body.phone !== client.phone) {
+        const existingClientByPhone = await clientService.findClientByPhone(accountId, req.body.phone);
+        if (existingClientByPhone && existingClientByPhone.id !== clientId) {
+          res.status(400).json({ 
+            success: false, 
+            message: 'Bu telefon numarası ile kayıtlı başka bir müşteri zaten var' 
+          });
+          return;
+        }
+      }
+      
+      // E-posta kontrolü - farklı müşterilerde aynı e-posta var mı?
+      if (req.body.email && req.body.email !== client.email) {
+        const existingClientByEmail = await clientService.findClientByEmail(accountId, req.body.email);
+        if (existingClientByEmail && existingClientByEmail.id !== clientId) {
+          res.status(400).json({ 
+            success: false, 
+            message: 'Bu e-posta adresi ile kayıtlı başka bir müşteri zaten var' 
+          });
+          return;
+        }
+      }
+      
+      // Güncelleme verilerini hazırla
+      const updateData = {
+        firstName: req.body.firstName,
+        lastName: req.body.lastName,
+        phone: req.body.phone,
+        email: req.body.email
+      };
+      
+      // Müşteriyi güncelle
+      const updatedClient = await clientService.updateClient(clientId, updateData);
+      
+      res.status(200).json({
+        success: true,
+        message: 'Müşteri başarıyla güncellendi',
+        client: updatedClient
+      });
+    } catch (error) {
+      console.error('Update client error:', error);
+      
+      if (error instanceof Error) {
+        res.status(400).json({ 
+          success: false, 
+          message: error.message 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: 'Müşteri güncellenirken bir hata oluştu' 
+        });
+      }
     }
   }
 
@@ -913,11 +1111,88 @@ export class OwnerController {
       // Randevu durumunu güncelle
       const updatedAppointment = await appointmentService.updateAppointmentStatus(appointmentId, status as AppointmentStatus);
       
-      res.status(200).json({
-        success: true,
-        message: `Randevu durumu '${status}' olarak güncellendi`,
-        appointment: updatedAppointment
-      });
+      // Eğer randevu durumu "Completed" ise, kalan seansları kontrol et ve bir seans düş
+      if (status === AppointmentStatus.Completed) {
+        try {
+          // Müşteri adından isim ve soyisim ayır
+          const nameParts = appointment.customerName.split(' ');
+          let firstName = '';
+          let lastName = '';
+
+          if (nameParts.length > 1) {
+            // Eğer birden fazla kelime varsa, son kelime soyisim, geri kalanı isim olsun
+            lastName = nameParts.pop() || '';
+            firstName = nameParts.join(' ');
+          } else {
+            // Tek kelime varsa isim olarak kabul et
+            firstName = appointment.customerName;
+          }
+
+          // Müşteri adına göre müşteri ara
+          const potentialClients = await clientService.searchClientsByName(accountId, firstName);
+          
+          if (potentialClients.length > 0) {
+            // İlgili müşterinin satışlarını kontrol et
+            let usedSession = false;
+            
+            for (const client of potentialClients) {
+              // Müşterinin bu hizmete ait aktif satışları var mı?
+              const sales = await saleService.getSalesByClientId(client.id, accountId);
+              
+              // Bu hizmete ait ve kalan seansı olan satışı bul
+              const activeSale = sales.find(
+                sale => sale.serviceId === appointment.serviceId && sale.remainingSessions > 0
+              );
+              
+              if (activeSale) {
+                // Seans kullan
+                await saleService.useSession(activeSale.id);
+                
+                // Başarılı yanıt dön
+                usedSession = true;
+                res.status(200).json({
+                  success: true,
+                  message: `Randevu durumu '${status}' olarak güncellendi ve 1 seans kullanıldı`,
+                  appointment: updatedAppointment
+                });
+                
+                break; // İşlem yapıldı, döngüyü sonlandır
+              }
+            }
+            
+            // Eğer seans kullanımı yapılmadıysa normal yanıtı dön
+            if (!usedSession) {
+              res.status(200).json({
+                success: true,
+                message: `Randevu durumu '${status}' olarak güncellendi`,
+                appointment: updatedAppointment
+              });
+            }
+          } else {
+            // Müşteri bulunamadı, sadece randevu durumu güncellendi
+            res.status(200).json({
+              success: true,
+              message: `Randevu durumu '${status}' olarak güncellendi`,
+              appointment: updatedAppointment
+            });
+          }
+        } catch (error) {
+          console.error('Seans kullanma hatası:', error);
+          // Sadece randevu durumu güncellendi, seans kullanımında hata oluştu
+          res.status(200).json({
+            success: true,
+            message: `Randevu durumu '${status}' olarak güncellendi, ancak seans kullanımı sırasında hata oluştu`,
+            appointment: updatedAppointment
+          });
+        }
+      } else {
+        // "Completed" değilse normal yanıtı dön
+        res.status(200).json({
+          success: true,
+          message: `Randevu durumu '${status}' olarak güncellendi`,
+          appointment: updatedAppointment
+        });
+      }
     } catch (error) {
       console.error('Update appointment status error:', error);
       
@@ -1489,6 +1764,102 @@ export class OwnerController {
 
   // -- SEANS YÖNETİMİ --
 
+  // Tüm seansları personel bilgileriyle getirme
+  async getAllSessions(req: Request, res: Response): Promise<void> {
+    try {
+      const ownerId = req.user?.userId;
+      if (!ownerId) {
+        res.status(401).json({ 
+          success: false, 
+          message: 'Yetkilendirme başarısız' 
+        });
+        return;
+      }
+      
+      const owner = await userService.findUserById(ownerId);
+      if (!owner) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'Kullanıcı bulunamadı' 
+        });
+        return;
+      }
+      
+      const accountId = owner.accountId;
+      if (!accountId) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'İşletme bilgisi bulunamadı' 
+        });
+        return;
+      }
+      
+      // Filtreleri hazırla
+      const filters: any = {};
+      
+      if (req.query.startDate) {
+        filters.startDate = new Date(req.query.startDate as string);
+      }
+      
+      if (req.query.endDate) {
+        filters.endDate = new Date(req.query.endDate as string);
+      }
+      
+      if (req.query.staffId) {
+        filters.staffId = parseInt(req.query.staffId as string, 10);
+      }
+      
+      if (req.query.status) {
+        filters.status = req.query.status as 'Scheduled' | 'Completed' | 'Missed';
+      }
+
+      // Satış ID'sine göre filtreleme
+      if (req.query.saleId) {
+        filters.saleId = parseInt(req.query.saleId as string, 10);
+      }
+      
+      // Hizmet ID'sine göre filtreleme
+      if (req.query.serviceId) {
+        filters.serviceId = parseInt(req.query.serviceId as string, 10);
+      }
+      
+      const sessions = await saleService.getAllSessions(accountId, Object.keys(filters).length > 0 ? filters : undefined);
+      
+      // Formatlanmış veriyi hazırla
+      const formattedSessions = sessions.map(session => ({
+        id: session.id,
+        sessionDate: session.sessionDate,
+        status: session.status,
+        staff: session.staff ? {
+          id: session.staff.id,
+          fullName: session.staff.fullName,
+          role: session.staff.role
+        } : null,
+        client: {
+          id: session.sale.client.id,
+          fullName: `${session.sale.client.firstName} ${session.sale.client.lastName}`,
+          phone: session.sale.client.phone
+        },
+        service: {
+          id: session.sale.service.id,
+          name: session.sale.service.serviceName
+        },
+        notes: session.notes
+      }));
+      
+      res.status(200).json({
+        success: true,
+        sessions: formattedSessions
+      });
+    } catch (error) {
+      console.error('Get all sessions error:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Seans bilgileri alınırken bir hata oluştu' 
+      });
+    }
+  }
+  
   // Müşterinin kalan seanslarını getirme
   async getClientRemainingSessions(req: Request, res: Response): Promise<void> {
     try {
@@ -1563,7 +1934,18 @@ export class OwnerController {
   async useSession(req: Request, res: Response): Promise<void> {
     try {
       const saleId = parseInt(req.params.id, 10);
-      const staffId = req.body.staffId ? parseInt(req.body.staffId, 10) : undefined;
+      let staffId = req.body.staffId ? parseInt(req.body.staffId, 10) : undefined;
+      const sessionDate = req.body.sessionDate ? new Date(req.body.sessionDate) : undefined;
+      const notes = req.body.notes;
+      
+      // Debug için gelen verileri logla
+      console.log("Seans kullanımı isteği:", {
+        saleId,
+        staffId,
+        sessionDate,
+        notes,
+        rawBody: req.body
+      });
       
       // Owner'ın işletme ID'sini al
       const ownerId = req.user?.userId;
@@ -1622,8 +2004,25 @@ export class OwnerController {
         return;
       }
       
+      // Personel varlık kontrolü
+      if (staffId !== undefined) {
+        const staff = await prisma.staff.findUnique({
+          where: { id: staffId }
+        });
+        
+        if (!staff) {
+          console.warn(`Belirtilen personel (ID: ${staffId}) bulunamadı, seans personelsiz olarak kaydediliyor.`);
+          // Personel bulunamadığında null olarak ayarla
+          staffId = undefined;
+        } else if (staff.accountId !== accountId) {
+          // Personel başka işletmeye aitse uyarı ver
+          console.warn(`Belirtilen personel (ID: ${staffId}) bu işletmeye ait değil.`);
+          staffId = undefined;
+        }
+      }
+      
       // Seans kullanımını kaydet
-      const result = await saleService.useSession(saleId, staffId);
+      const result = await saleService.useSession(saleId, staffId, sessionDate, notes);
       
       res.status(200).json({
         success: true,

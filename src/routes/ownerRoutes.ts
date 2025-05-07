@@ -7,6 +7,12 @@ import ValidationMiddleware from '../app/middleware/validation.middleware';
 const router = express.Router();
 const ownerController = new OwnerController();
 
+router.get('/employees',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.getEmployees.bind(ownerController)
+);
+
 router.post('/employees',
   authenticate,
   authorizeRole([UserRole.OWNER]),
@@ -61,6 +67,14 @@ router.get('/clients/:id',
   authenticate,
   authorizeRole([UserRole.OWNER]),
   ownerController.getClientById.bind(ownerController)
+);
+
+router.put('/clients/:id',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ValidationMiddleware.validateClientUpdate,
+  ValidationMiddleware.validate,
+  ownerController.updateClient.bind(ownerController)
 );
 
 router.post('/appointments',
@@ -160,6 +174,12 @@ router.get('/clients/:id/sessions',
   authenticate,
   authorizeRole([UserRole.OWNER]),
   ownerController.getClientRemainingSessions.bind(ownerController)
+);
+
+router.get('/sessions',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.getAllSessions.bind(ownerController)
 );
 
 router.post('/sales/:id/use-session',

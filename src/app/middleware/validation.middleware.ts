@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { body, validationResult, ValidationChain } from 'express-validator';
 import { UserRole } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 export class ValidationMiddleware {
     public static validateRegister: ValidationChain[] = [
@@ -219,6 +220,33 @@ export class ValidationMiddleware {
             .trim()
             .notEmpty()
             .withMessage('Soyad zorunludur'),
+        
+        body('phone')
+            .optional()
+            .trim()
+            .isLength({ min: 10 })
+            .withMessage('Telefon numarası en az 10 karakter olmalıdır'),
+        
+        body('email')
+            .optional()
+            .trim()
+            .isEmail()
+            .withMessage('Geçerli bir email adresi giriniz')
+            .normalizeEmail()
+    ];
+
+    public static validateClientUpdate: ValidationChain[] = [
+        body('firstName')
+            .optional()
+            .trim()
+            .notEmpty()
+            .withMessage('Ad boş olamaz'),
+        
+        body('lastName')
+            .optional()
+            .trim()
+            .notEmpty()
+            .withMessage('Soyad boş olamaz'),
         
         body('phone')
             .optional()

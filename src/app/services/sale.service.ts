@@ -171,7 +171,7 @@ export class SaleService {
   }
 
   // Seans kullanımını kaydetme
-  async useSession(saleId: number, staffId?: number) {
+  async useSession(saleId: number, staffId?: number, sessionDate?: Date, notes?: string) {
     const sale = await prisma.sales.findUnique({
       where: { id: saleId },
       include: { service: true, client: true }
@@ -190,9 +190,9 @@ export class SaleService {
       data: {
         saleId: saleId,
         staffId: staffId || null,
-        sessionDate: new Date(),
+        sessionDate: sessionDate || new Date(),
         status: 'Completed', // Tamamlandı olarak işaretle
-        notes: 'Seans tamamlandı'
+        notes: notes || 'Seans tamamlandı'
       }
     });
     
@@ -208,5 +208,70 @@ export class SaleService {
       ...updatedSale,
       sessionRecord
     };
+  }
+
+  // Tüm seansları personel bilgileriyle birlikte getirme
+  async getAllSessions(accountId: number, filters?: {
+    startDate?: Date,
+    endDate?: Date,
+    staffId?: number,
+    status?: 'Scheduled' | 'Completed' | 'Missed',
+    saleId?: number,
+    serviceId?: number
+  }) {
+    const where: any = {
+      sale: {
+        client: { accountId }
+      }
+    };
+    
+    // Filtreler varsa ekle
+    if (filters) {
+      if (filters.startDate && filters.endDate) {
+        where.sessionDate = {
+          gte: filters.startDate,
+          lte: filters.endDate
+        };
+      } else if (filters.startDate) {
+        where.sessionDate = { gte: filters.startDate };
+      } else if (filters.endDate) {
+        where.sessionDate = { lte: filters.endDate };
+      }
+      
+      if (filters.staffId) {
+        where.staffId = filters.staffId;
+      }
+      
+      if (filters.status) {
+        where.status = filters.status;
+      }
+
+      // Satış ID'sine göre filtreleme
+      if (filters.saleId) {
+        where.saleId = filters.saleId;
+      }
+      
+      // Hizmet ID'sine göre filtreleme
+      if (filters.serviceId) {
+        where.sale = {
+          ...where.sale,
+          serviceId: filters.serviceId
+        };
+      }
+    }
+    
+    return await prisma.sessions.findMany({
+      where,
+      include: {
+        staff: true,
+        sale: {
+          include: {
+            client: true,
+            service: true
+          }
+        }
+      },
+      orderBy: { sessionDate: 'desc' }
+    });
   }
 } 
