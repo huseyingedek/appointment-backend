@@ -5,7 +5,11 @@ import { errorHandler } from './app/utils/error.util';
 
 const app: Application = express();
 
-app.use(cors());
+app.use(cors({
+  origin: ['https://appointment-frontend-seven.vercel.app', 'http://localhost:3000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 app.use(express.json({ limit: '50mb' }));
 
