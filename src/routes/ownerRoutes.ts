@@ -188,4 +188,11 @@ router.post('/sales/:id/use-session',
   ownerController.useSession.bind(ownerController)
 );
 
+// Dashboard istatistikleri route'u
+router.get('/dashboard/stats',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.getDashboardStats.bind(ownerController)
+);
+
 export default router;

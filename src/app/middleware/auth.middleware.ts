@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, TokenPayload } from '../utils/jwt';
-import { UserRole } from '@prisma/client';
+import { UserRole, PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 declare global {
   namespace Express {
@@ -10,7 +12,7 @@ declare global {
   }
 }
 
-export const authenticate = (req: Request, res: Response, next: NextFunction): void => {
+export const authenticate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
     
@@ -23,6 +25,32 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
     const decodedToken = verifyToken(token);
     
     req.user = decodedToken;
+
+    // OWNER veya EMPLOYEE rolündeki kullanıcılar için işletme durumunu kontrol et
+    if (req.user.role === UserRole.OWNER || req.user.role === UserRole.EMPLOYEE) {
+      if (req.user.accountId) {
+        const account = await prisma.accounts.findUnique({
+          where: { id: req.user.accountId }
+        });
+
+        if (!account) {
+          res.status(404).json({ 
+            success: false,
+            message: 'İşletme kaydı bulunamadı'
+          });
+          return;
+        }
+
+        if (!account.isActive) {
+          res.status(403).json({ 
+            success: false,
+            message: 'İşletmeniz geçici olarak kapatılmıştır. Lütfen yetkililerle iletişime geçin.'
+          });
+          return;
+        }
+      }
+    }
+
     next();
   } catch (error) {
     res.status(401).json({ message: 'Yetkilendirme başarısız: Geçersiz token' });

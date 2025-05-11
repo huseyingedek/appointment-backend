@@ -5,6 +5,7 @@ import { ServiceService } from '../services/service.service';
 import { ClientService } from '../services/client.service';
 import { AppointmentService } from '../services/appointment.service';
 import { SaleService } from '../services/sale.service';
+import { DashboardService } from '../services/dashboard.service';
 import { validationResult } from 'express-validator';
 import { UserRole, AppointmentStatus, PaymentMethod, SessionStatus, PrismaClient } from '@prisma/client';
 
@@ -14,6 +15,7 @@ const serviceService = new ServiceService();
 const clientService = new ClientService();
 const appointmentService = new AppointmentService();
 const saleService = new SaleService();
+const dashboardService = new DashboardService();
 
 export class OwnerController {
   
@@ -60,16 +62,16 @@ export class OwnerController {
       
       const employee = await userService.createEmployee(employeeData, ownerAccountId);
       
-      const employeeAccountId = employee.accountId;
+      const employeeAccountId = employee.user.accountId;
       
       res.status(201).json({
         success: true,
         message: 'Personel başarıyla oluşturuldu',
         employee: {
-          id: employee.id,
-          username: employee.username,
-          email: employee.email,
-          role: employee.role,
+          id: employee.user.id,
+          username: employee.user.username,
+          email: employee.user.email,
+          role: employee.user.role,
           accountId: employeeAccountId
         }
       });
@@ -2045,6 +2047,53 @@ export class OwnerController {
           message: 'Seans kullanımı kaydedilirken bir hata oluştu' 
         });
       }
+    }
+  }
+
+  // Dashboard istatistiklerini getir
+  async getDashboardStats(req: Request, res: Response): Promise<void> {
+    try {
+      // Owner'ın işletme ID'sini al
+      const ownerId = req.user?.userId;
+      if (!ownerId) {
+        res.status(401).json({ 
+          success: false, 
+          message: 'Yetkilendirme başarısız' 
+        });
+        return;
+      }
+      
+      const owner = await userService.findUserById(ownerId);
+      if (!owner) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'Kullanıcı bulunamadı' 
+        });
+        return;
+      }
+      
+      const accountId = owner.accountId;
+      if (!accountId) {
+        res.status(404).json({ 
+          success: false, 
+          message: 'İşletme bilgisi bulunamadı' 
+        });
+        return;
+      }
+      
+      // Dashboard istatistiklerini al
+      const stats = await dashboardService.getDashboardStats(accountId);
+      
+      res.status(200).json({
+        success: true,
+        stats
+      });
+    } catch (error) {
+      console.error('Dashboard stats error:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Dashboard istatistikleri alınırken bir hata oluştu' 
+      });
     }
   }
 }

@@ -3,8 +3,10 @@ import { Request, Response } from 'express';
 import { UserService, LoginInput } from '../services/user.service';
 import { generateToken } from '../utils/jwt';
 import { validationResult } from 'express-validator';
+import { UserRole, PrismaClient } from '@prisma/client';
 
 const userService = new UserService();
+const prisma = new PrismaClient();
 
 export class AuthController {
   // Kullanıcı giriş işlemi
@@ -22,6 +24,29 @@ export class AuthController {
       if (!user) {
         res.status(401).json({ message: 'Geçersiz email veya şifre' });
         return;
+      }
+      
+      // OWNER veya EMPLOYEE için işletme aktiflik kontrolü
+      if (user.accountId && (user.role === UserRole.OWNER || user.role === UserRole.EMPLOYEE)) {
+        const account = await prisma.accounts.findUnique({
+          where: { id: user.accountId }
+        });
+        
+        if (!account) {
+          res.status(404).json({ 
+            success: false, 
+            message: 'İşletme kaydı bulunamadı' 
+          });
+          return;
+        }
+        
+        if (!account.isActive) {
+          res.status(403).json({ 
+            success: false, 
+            message: 'İşletmeniz geçici olarak kapatılmıştır. Lütfen yetkililerle iletişime geçin.' 
+          });
+          return;
+        }
       }
       
       // Token oluştur
