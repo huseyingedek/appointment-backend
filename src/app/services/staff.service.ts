@@ -18,23 +18,55 @@ export interface WorkingHourInput {
   isWorking: boolean;
 }
 
+// Çalışma saatlerini getirmek için yardımcı fonksiyon
+const getWorkingHoursForStaff = async (staffId: number) => {
+  try {
+    return await prisma.workingHours.findMany({
+      where: { staffId },
+      orderBy: { dayOfWeek: 'asc' }
+    });
+  } catch (error) {
+    console.error(`WorkingHours fetch error for staffId ${staffId}:`, error);
+    return [];
+  }
+};
+
 export class StaffService {
   
   async createStaff(data: StaffInput) {
     const { workingHours, ...staffData } = data;
     
     if (workingHours && workingHours.length > 0) {
-      return await prisma.staff.create({
-        data: {
-          ...staffData,
-          workingHours: {
-            create: workingHours
-          }
-        },
-        include: {
-          workingHours: true
-        }
+      // İlk önce personeli oluştur
+      const staff = await prisma.staff.create({
+        data: staffData
       });
+      
+      // Sonra çalışma saatlerini ekle
+      try {
+        for (const hour of workingHours) {
+          await prisma.workingHours.create({
+            data: {
+              staffId: staff.id,
+              dayOfWeek: hour.dayOfWeek,
+              startTime: hour.startTime,
+              endTime: hour.endTime,
+              isWorking: hour.isWorking === false ? false : true
+            }
+          });
+        }
+      } catch (error) {
+        console.error("Error creating working hours:", error);
+      }
+      
+      // Çalışma saatlerini manuel olarak getir
+      const staffWorkingHours = await getWorkingHoursForStaff(staff.id);
+      
+      // Veriyi birleştir ve döndür
+      return {
+        ...staff,
+        workingHours: staffWorkingHours
+      };
     } else {
       return await prisma.staff.create({
         data: staffData
@@ -44,30 +76,44 @@ export class StaffService {
 
   // Personel bilgilerini getirme
   async getStaffById(staffId: number) {
-    return await prisma.staff.findUnique({
-      where: { id: staffId },
-      include: {
-        workingHours: {
-          orderBy: { dayOfWeek: 'asc' }
-        }
-      }
+    const staff = await prisma.staff.findUnique({
+      where: { id: staffId }
     });
+    
+    if (!staff) return null;
+    
+    // Çalışma saatlerini manuel olarak getir
+    const workingHours = await getWorkingHoursForStaff(staffId);
+    
+    // Veriyi birleştir ve döndür
+    return {
+      ...staff,
+      workingHours
+    };
   }
 
   // İşletmeye ait personelleri getirme
   async getStaffByAccountId(accountId: number) {
-    return await prisma.staff.findMany({
+    const staffList = await prisma.staff.findMany({
       where: { 
         accountId,
         isActive: true 
       },
-      include: {
-        workingHours: {
-          orderBy: { dayOfWeek: 'asc' }
-        }
-      },
       orderBy: { fullName: 'asc' }
     });
+    
+    // Her personel için çalışma saatlerini getir ve birleştir
+    const staffWithWorkingHours = await Promise.all(
+      staffList.map(async (staff) => {
+        const workingHours = await getWorkingHoursForStaff(staff.id);
+        return {
+          ...staff,
+          workingHours
+        };
+      })
+    );
+    
+    return staffWithWorkingHours;
   }
 
   // Personel bilgilerini güncelleme
@@ -75,31 +121,45 @@ export class StaffService {
     const { workingHours, ...staffData } = data;
     
     if (workingHours) {
-      await prisma.workingHours.deleteMany({
-        where: { staffId }
-      });
-      
-      if (workingHours.length > 0) {
-        const createHours = workingHours.map(hour => ({
-          ...hour,
-          staffId
-        }));
-        
-        await prisma.workingHours.createMany({
-          data: createHours
+      try {
+        // Mevcut çalışma saatlerini temizle
+        await prisma.workingHours.deleteMany({
+          where: { staffId }
         });
+        
+        // Yeni çalışma saatlerini ekle
+        if (workingHours.length > 0) {
+          for (const hour of workingHours) {
+            await prisma.workingHours.create({
+              data: {
+                staffId,
+                dayOfWeek: hour.dayOfWeek,
+                startTime: hour.startTime,
+                endTime: hour.endTime,
+                isWorking: hour.isWorking === false ? false : true
+              }
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Çalışma saatleri güncellenirken hata:", error);
       }
     }
     
-    return await prisma.staff.update({
+    // Personel bilgilerini güncelle
+    const updatedStaff = await prisma.staff.update({
       where: { id: staffId },
-      data: staffData,
-      include: {
-        workingHours: {
-          orderBy: { dayOfWeek: 'asc' }
-        }
-      }
+      data: staffData
     });
+    
+    // Çalışma saatlerini manuel olarak getir
+    const updatedWorkingHours = await getWorkingHoursForStaff(staffId);
+    
+    // Veriyi birleştir ve döndür
+    return {
+      ...updatedStaff,
+      workingHours: updatedWorkingHours
+    };
   }
 
   // Personeli pasife alma
@@ -123,7 +183,6 @@ export class StaffService {
     
     // Önce mevcut çalışma saatlerini temizle - safe delete kullanarak
     try {
-      // @ts-ignore - Prisma tip hatalarını geçici olarak yok sayıyoruz
       await prisma.workingHours.deleteMany({
         where: { staffId }
       });
@@ -132,12 +191,11 @@ export class StaffService {
       // İşleme devam et
     }
     
-    // Çalışma saatlerini tek tek ekle (createMany yerine tek tek create kullan)
+    // Çalışma saatlerini tek tek ekle
     const results = [];
     
     for (const hour of workingHours) {
       try {
-        // @ts-ignore - Prisma tip hatalarını geçici olarak yok sayıyoruz
         const createdHour = await prisma.workingHours.create({
           data: {
             staffId,
