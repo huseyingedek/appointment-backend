@@ -29,8 +29,7 @@ export class AppointmentService {
           status: data.status || AppointmentStatus.Planned
         },
         include: {
-          service: true,
-          staff: true
+          service: true
         }
       });
     } catch (error) {
@@ -44,8 +43,7 @@ export class AppointmentService {
     return await prisma.appointments.findUnique({
       where: { id: appointmentId },
       include: {
-        service: true,
-        staff: true
+        service: true
       }
     });
   }
@@ -55,8 +53,7 @@ export class AppointmentService {
     return await prisma.appointments.findMany({
       where: { accountId },
       include: {
-        service: true,
-        staff: true
+        service: true
       },
       orderBy: { appointmentDate: 'asc' }
     });
@@ -79,8 +76,7 @@ export class AppointmentService {
         }
       },
       include: {
-        service: true,
-        staff: true
+        service: true
       },
       orderBy: { appointmentDate: 'asc' }
     });
@@ -99,8 +95,7 @@ export class AppointmentService {
         status: AppointmentStatus.Planned
       },
       include: {
-        service: true,
-        staff: true
+        service: true
       },
       orderBy: { appointmentDate: 'asc' }
     });
@@ -112,8 +107,7 @@ export class AppointmentService {
       where: { id: appointmentId },
       data,
       include: {
-        service: true,
-        staff: true
+        service: true
       }
     });
   }
@@ -131,8 +125,7 @@ export class AppointmentService {
       where: { id: appointmentId },
       data: { status },
       include: {
-        service: true,
-        staff: true
+        service: true
       }
     });
   }
@@ -145,8 +138,7 @@ export class AppointmentService {
         status
       },
       include: {
-        service: true,
-        staff: true
+        service: true
       },
       orderBy: { appointmentDate: 'asc' }
     });
@@ -167,8 +159,7 @@ export class AppointmentService {
         status: AppointmentStatus.Planned
       },
       include: {
-        service: true,
-        staff: true
+        service: true
       },
       orderBy: { appointmentDate: 'asc' }
     });
