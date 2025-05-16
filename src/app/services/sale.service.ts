@@ -1,4 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
+import { StaffService } from './staff.service';
 
 const prisma = new PrismaClient();
 
@@ -260,10 +261,10 @@ export class SaleService {
       }
     }
     
-    return await prisma.sessions.findMany({
+    // Önce sessions verisini al
+    const sessions = await prisma.sessions.findMany({
       where,
       include: {
-        staff: true,
         sale: {
           include: {
             client: true,
@@ -273,5 +274,26 @@ export class SaleService {
       },
       orderBy: { sessionDate: 'desc' }
     });
+    
+    // Her seans için staff bilgilerini manuel olarak getir
+    const staffService = new StaffService();
+    const sessionsWithStaff = await Promise.all(
+      sessions.map(async session => {
+        let staff = null;
+        if (session.staffId) {
+          try {
+            staff = await staffService.getStaffById(session.staffId);
+          } catch (error) {
+            console.error(`Staff fetch error for sessionId ${session.id}:`, error);
+          }
+        }
+        return {
+          ...session,
+          staff
+        };
+      })
+    );
+    
+    return sessionsWithStaff;
   }
 } 

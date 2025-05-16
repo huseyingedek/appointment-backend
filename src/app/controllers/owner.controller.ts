@@ -33,11 +33,16 @@ interface WorkingHour {
 // Çalışma saatlerini getirmek için yardımcı fonksiyon
 const getWorkingHoursForStaff = async (staffId: number): Promise<WorkingHour[]> => {
   try {
-    const prisma = new PrismaClient();
-    return await prisma.workingHours.findMany({
-      where: { staffId },
-      orderBy: { dayOfWeek: 'asc' }
-    });
+    // workingHours tablosunu kontrol et ve varsa veriyi getir
+    try {
+      return await prisma.workingHours.findMany({
+        where: { staffId },
+        orderBy: { dayOfWeek: 'asc' }
+      });
+    } catch (error) {
+      console.error(`WorkingHours fetch error for staffId ${staffId}:`, error);
+      return []; // Hata durumunda boş array dön
+    }
   } catch (error) {
     console.error(`WorkingHours fetch error for staffId ${staffId}:`, error);
     return [];
