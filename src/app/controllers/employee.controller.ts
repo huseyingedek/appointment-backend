@@ -1,15 +1,15 @@
 import { Request, Response } from 'express';
 import { UserService } from '../services/user.service';
 import { validationResult } from 'express-validator';
-import { UserRole } from '@prisma/client';
+import { UserRole, PrismaClient } from '@prisma/client';
 
 const userService = new UserService();
+const prisma = new PrismaClient();
 
 export class EmployeeController {
   // İşletmeye ait tüm personelleri listeleme
   async getAllEmployees(req: Request, res: Response): Promise<void> {
     try {
-      // Yetki kontrolü
       if (!req.user || req.user.role !== UserRole.OWNER) {
         res.status(403).json({ 
           success: false, 
@@ -29,9 +29,46 @@ export class EmployeeController {
 
       const employees = await userService.getEmployeesByAccountId(accountId);
       
+      const staffRecords = await prisma.staff.findMany({
+        where: { 
+          accountId,
+          isActive: true
+        },
+        include: {
+          workingHours: {
+            orderBy: {
+              dayOfWeek: 'asc'
+            }
+          }
+        }
+      });
+      
+      const weekDays = [
+        'Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'
+      ];
+      
+      const extendedEmployees = employees.map(emp => {
+        const staffRecord = staffRecords.find(s => s.email === emp.email);
+        
+        if (staffRecord && staffRecord.workingHours) {
+          const formattedHours = staffRecord.workingHours.map(wh => ({
+            ...wh,
+            dayName: weekDays[wh.dayOfWeek]
+          }));
+          
+          return {
+            ...emp,
+            workingHours: formattedHours,
+            staffId: staffRecord.id
+          };
+        }
+        
+        return { ...emp, workingHours: [], staffId: null };
+      });
+      
       res.status(200).json({
         success: true,
-        employees
+        employees: extendedEmployees
       });
     } catch (error) {
       console.error('Get employees error:', error);
@@ -45,7 +82,6 @@ export class EmployeeController {
   // Personel detayını görüntüleme
   async getEmployeeById(req: Request, res: Response): Promise<void> {
     try {
-      // Yetki kontrolü
       if (!req.user || req.user.role !== UserRole.OWNER) {
         res.status(403).json({ 
           success: false, 
@@ -82,9 +118,43 @@ export class EmployeeController {
         return;
       }
       
+      // Personelin staff kaydını ve çalışma saatlerini bul
+      const staffRecord = await prisma.staff.findFirst({
+        where: { 
+          email: employee.email,
+          accountId
+        },
+        include: {
+          workingHours: {
+            orderBy: {
+              dayOfWeek: 'asc'
+            }
+          }
+        }
+      });
+      
+      // Çalışma saatlerini formatla
+      if (staffRecord && staffRecord.workingHours) {
+        const weekDays = [
+          'Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'
+        ];
+        
+        staffRecord.workingHours = staffRecord.workingHours.map(wh => ({
+          ...wh,
+          dayName: weekDays[wh.dayOfWeek]
+        }));
+      }
+
+      // Personel bilgilerine çalışma saatlerini ekle
+      const extendedEmployee = {
+        ...employee,
+        workingHours: staffRecord?.workingHours || [],
+        staffId: staffRecord?.id
+      };
+      
       res.status(200).json({
         success: true,
-        employee
+        employee: extendedEmployee
       });
     } catch (error) {
       console.error('Get employee error:', error);
@@ -202,25 +272,47 @@ export class EmployeeController {
         return;
       }
 
-      // Güncellenecek verileri alıp doğrula
+      // İstek gövdesinden bilgileri al
+      const { username, email, phone, password, fullName, workingHours } = req.body;
+      
+      // Çalışma saatlerini doğrulama
+      if (workingHours && Array.isArray(workingHours)) {
+        for (const wh of workingHours) {
+          if (wh.dayOfWeek < 0 || wh.dayOfWeek > 6) {
+            res.status(400).json({
+              success: false,
+              message: 'Geçersiz gün değeri. 0 (Pazar) ile 6 (Cumartesi) arasında olmalıdır.'
+            });
+            return;
+          }
+          
+          if (!wh.startTime || !wh.endTime) {
+            res.status(400).json({
+              success: false,
+              message: 'Başlangıç ve bitiş saati gereklidir (örn: "09:00")'
+            });
+            return;
+          }
+        }
+      }
+      
+      // Güncellenecek verileri hazırla
       const updateData: {
         username?: string;
         email?: string;
         phone?: string;
         password?: string;
-      } = {
-        username: req.body.username,
-        email: req.body.email,
-        phone: req.body.phone,
-        password: req.body.password
-      };
-
-      // Boş alanları kaldır
-      Object.keys(updateData).forEach(key => {
-        if (updateData[key as keyof typeof updateData] === undefined) {
-          delete updateData[key as keyof typeof updateData];
-        }
-      });
+        fullName?: string;
+        workingHours?: any[];
+      } = {};
+      
+      // Sadece değer verilmiş alanları ekle
+      if (username !== undefined) updateData.username = username;
+      if (email !== undefined) updateData.email = email;
+      if (phone !== undefined) updateData.phone = phone;
+      if (password !== undefined) updateData.password = password;
+      if (fullName !== undefined) updateData.fullName = fullName;
+      if (workingHours !== undefined) updateData.workingHours = workingHours;
 
       // Eğer email değişiyorsa, email kullanılıyor mu kontrol et
       if (updateData.email) {
@@ -237,10 +329,30 @@ export class EmployeeController {
       // Personeli güncelle
       const updatedEmployee = await userService.updateEmployee(employeeId, accountId, updateData);
       
+      // Güncel personel bilgilerini getir (çalışma saatleriyle birlikte)
+      // @ts-ignore
+      const staffRecord = await prisma.staff.findFirst({
+        where: { 
+          email: updatedEmployee.email,
+          accountId
+        },
+        include: {
+          // @ts-ignore - Prisma tip hatalarını geçici olarak yok sayıyoruz
+          workingHours: {
+            orderBy: {
+              dayOfWeek: 'asc'
+            }
+          }
+        }
+      });
+      
       res.status(200).json({
         success: true,
         message: 'Personel bilgileri başarıyla güncellendi',
-        employee: updatedEmployee
+        employee: {
+          ...updatedEmployee,
+          staff: staffRecord
+        }
       });
     } catch (error) {
       console.error('Update employee error:', error);

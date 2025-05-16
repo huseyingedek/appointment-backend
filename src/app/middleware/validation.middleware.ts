@@ -30,8 +30,8 @@ export class ValidationMiddleware {
         body('phone')
             .optional()
             .trim()
-            .isLength({ min: 10 })
-            .withMessage('Telefon numarası en az 10 karakter olmalıdır'),
+            .isLength({ min: 10, max: 10 })
+            .withMessage('Telefon numarası 10 karakter olmalıdır'),
             
         body('role')
             .optional()
@@ -85,8 +85,8 @@ export class ValidationMiddleware {
         body('phone')
             .optional()
             .trim()
-            .isLength({ min: 10 })
-            .withMessage('Telefon numarası en az 10 karakter olmalıdır'),
+            .isLength({ min: 10, max: 10 })
+            .withMessage('Telefon numarası 10 karakter olmalıdır'),
         
         body('businessEmail')
             .optional()
@@ -96,8 +96,8 @@ export class ValidationMiddleware {
         body('businessPhone')
             .optional()
             .trim()
-            .isLength({ min: 10 })
-            .withMessage('İşletme telefon numarası en az 10 karakter olmalıdır'),
+            .isLength({ min: 10, max: 10 })
+            .withMessage('İşletme telefon numarası 10 karakter olmalıdır'),
         
         body('subscriptionPlan')
             .optional()
@@ -106,12 +106,10 @@ export class ValidationMiddleware {
     ];
 
     public static validateEmployeeCreation: ValidationChain[] = [
-        body('username')
+        body('fullName')
             .trim()
             .notEmpty()
-            .withMessage('Kullanıcı adı zorunludur')
-            .isLength({ min: 3 })
-            .withMessage('Kullanıcı adı en az 3 karakter olmalıdır'),
+            .withMessage('Personel adı-soyadı zorunludur'),
 
         body('email')
             .trim()
@@ -124,9 +122,14 @@ export class ValidationMiddleware {
         body('phone')
             .optional()
             .trim()
-            .isLength({ min: 10 })
-            .withMessage('Telefon numarası en az 10 karakter olmalıdır'),
+            .isLength({ min: 10, max: 10 })
+            .withMessage('Telefon numarası 10 karakter olmalıdır'),
         
+        body('username')
+            .optional()
+            .trim()
+            .isLength({ min: 3 })
+            .withMessage('Kullanıcı adı en az 3 karakter olmalıdır')
     ];
 
     public static validateEmployeeUpdate: ValidationChain[] = [
@@ -147,8 +150,8 @@ export class ValidationMiddleware {
         body('phone')
             .optional()
             .trim()
-            .isLength({ min: 10 })
-            .withMessage('Telefon numarası en az 10 karakter olmalıdır')
+            .isLength({ min: 10, max: 10 })
+            .withMessage('Telefon numarası 10 karakter olmalıdır')
     ];
 
     public static validateServiceCreation: ValidationChain[] = [
@@ -224,8 +227,8 @@ export class ValidationMiddleware {
         body('phone')
             .optional()
             .trim()
-            .isLength({ min: 10 })
-            .withMessage('Telefon numarası en az 10 karakter olmalıdır'),
+            .isLength({ min: 10, max: 10 })
+            .withMessage('Telefon numarası 10 karakter olmalıdır'),
         
         body('email')
             .optional()
@@ -251,8 +254,8 @@ export class ValidationMiddleware {
         body('phone')
             .optional()
             .trim()
-            .isLength({ min: 10 })
-            .withMessage('Telefon numarası en az 10 karakter olmalıdır'),
+            .isLength({ min: 10, max: 10 })
+            .withMessage('Telefon numarası 10 karakter olmalıdır'),
         
         body('email')
             .optional()

@@ -21,6 +21,29 @@ router.post('/employees',
   ownerController.createEmployee.bind(ownerController)
 );
 
+// Personel detaylarını getir
+router.get('/employees/:id',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.getEmployeeDetails.bind(ownerController)
+);
+
+// Personel güncelleme endpoint'i
+router.put('/employees/:id',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ValidationMiddleware.validateEmployeeUpdate,
+  ValidationMiddleware.validate,
+  ownerController.updateEmployee.bind(ownerController)
+);
+
+// Çalışma saatleri düzenleme endpoint'i zaten var
+router.put('/employees/:staffId/working-hours',
+  authenticate,
+  authorizeRole([UserRole.OWNER]),
+  ownerController.setEmployeeWorkingHours.bind(ownerController)
+);
+
 router.post('/services',
   authenticate,
   authorizeRole([UserRole.OWNER]),
@@ -97,7 +120,6 @@ router.get('/appointments/:date',
   ownerController.getAppointmentsByDate.bind(ownerController)
 );
 
-// Randevu güncelleme route'u
 router.put('/appointments/:id',
   authenticate,
   authorizeRole([UserRole.OWNER]),
@@ -106,14 +128,12 @@ router.put('/appointments/:id',
   ownerController.updateAppointment.bind(ownerController)
 );
 
-// Randevu silme route'u 
 router.delete('/appointments/:id',
   authenticate,
   authorizeRole([UserRole.OWNER]),
   ownerController.deleteAppointment.bind(ownerController)
 );
 
-// Randevu durumunu güncelleme route'u
 router.patch('/appointments/:id/status',
   authenticate,
   authorizeRole([UserRole.OWNER]),

@@ -7,10 +7,8 @@ import { UserRole } from '@prisma/client';
 const userService = new UserService();
 
 export class AdminController {
-  // Admin tarafından Owner hesabı oluşturma
   async createOwner(req: Request, res: Response): Promise<void> {
     try {
-      // Yetki kontrolü
       if (!req.user || req.user.role !== UserRole.ADMIN) {
         res.status(403).json({ message: 'Bu işlem için admin yetkisi gerekiyor' });
         return;
@@ -24,7 +22,6 @@ export class AdminController {
 
       const ownerData: CreateOwnerInput = req.body;
       
-      // Email kullanılıyor mu kontrol et
       const existingUser = await userService.findUserByEmail(ownerData.email);
       if (existingUser) {
         res.status(400).json({ message: 'Bu email adresi zaten kullanılıyor' });
@@ -60,10 +57,8 @@ export class AdminController {
     }
   }
 
-  // Tüm işletmeleri listeleme
   async getAllAccounts(req: Request, res: Response): Promise<void> {
     try {
-      // Yetki kontrolü
       if (!req.user || req.user.role !== UserRole.ADMIN) {
         res.status(403).json({ 
           success: false, 
@@ -87,10 +82,8 @@ export class AdminController {
     }
   }
 
-  // İşletme detayını görüntüleme
   async getAccountById(req: Request, res: Response): Promise<void> {
     try {
-      // Yetki kontrolü
       if (!req.user || req.user.role !== UserRole.ADMIN) {
         res.status(403).json({ 
           success: false, 
@@ -131,10 +124,8 @@ export class AdminController {
     }
   }
 
-  // İşletme bilgilerini güncelleme
   async updateAccount(req: Request, res: Response): Promise<void> {
     try {
-      // Yetki kontrolü
       if (!req.user || req.user.role !== UserRole.ADMIN) {
         res.status(403).json({ 
           success: false, 
@@ -152,7 +143,6 @@ export class AdminController {
         return;
       }
 
-      // İşletmenin var olup olmadığını kontrol et
       const existingAccount = await userService.getAccountById(accountId);
       if (!existingAccount) {
         res.status(404).json({ 
@@ -162,7 +152,6 @@ export class AdminController {
         return;
       }
 
-      // Güncellenecek verileri alıp doğrula
       const updateData: {
         businessName?: string;
         contactPerson?: string;
@@ -179,14 +168,12 @@ export class AdminController {
         isActive: req.body.isActive !== undefined ? Boolean(req.body.isActive) : undefined
       };
 
-      // Boş alanları kaldır
       Object.keys(updateData).forEach(key => {
         if (updateData[key as keyof typeof updateData] === undefined) {
           delete updateData[key as keyof typeof updateData];
         }
       });
 
-      // İşletmeyi güncelle
       const updatedAccount = await userService.updateAccount(accountId, updateData);
       
       res.status(200).json({
@@ -203,10 +190,8 @@ export class AdminController {
     }
   }
 
-  // İşletmeyi pasife alma
   async deactivateAccount(req: Request, res: Response): Promise<void> {
     try {
-      // Yetki kontrolü
       if (!req.user || req.user.role !== UserRole.ADMIN) {
         res.status(403).json({ 
           success: false, 
@@ -224,7 +209,6 @@ export class AdminController {
         return;
       }
 
-      // İşletmenin var olup olmadığını kontrol et
       const existingAccount = await userService.getAccountById(accountId);
       if (!existingAccount) {
         res.status(404).json({ 
@@ -234,7 +218,6 @@ export class AdminController {
         return;
       }
 
-      // İşletmeyi pasife al
       const deactivatedAccount = await userService.deactivateAccount(accountId);
       
       res.status(200).json({
@@ -254,7 +237,6 @@ export class AdminController {
   // İşletmeyi tamamen silme (Dikkatli kullanılmalı)
   async deleteAccount(req: Request, res: Response): Promise<void> {
     try {
-      // Yetki kontrolü
       if (!req.user || req.user.role !== UserRole.ADMIN) {
         res.status(403).json({ 
           success: false, 
@@ -272,7 +254,6 @@ export class AdminController {
         return;
       }
 
-      // İşletmenin var olup olmadığını kontrol et
       const existingAccount = await userService.getAccountById(accountId);
       if (!existingAccount) {
         res.status(404).json({ 
@@ -282,7 +263,6 @@ export class AdminController {
         return;
       }
       
-      // Silme işlemi için onay kontrolü (örnek)
       const confirmDelete = req.body.confirmDelete;
       if (!confirmDelete) {
         res.status(400).json({
@@ -292,7 +272,6 @@ export class AdminController {
         return;
       }
 
-      // İşletmeyi tamamen sil
       await userService.deleteAccount(accountId);
       
       res.status(200).json({

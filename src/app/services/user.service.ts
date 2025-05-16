@@ -1,7 +1,9 @@
 import { PrismaClient, User, UserRole } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { StaffService, WorkingHourInput } from './staff.service';
 
 const prisma = new PrismaClient();
+const staffService = new StaffService();
 
 export interface CreateUserInput {
   username: string;
@@ -10,6 +12,8 @@ export interface CreateUserInput {
   phone?: string;
   role: UserRole;
   accountId?: number;
+  fullName?: string;
+  workingHours?: WorkingHourInput[];
 }
 
 export interface CreateOwnerInput {
@@ -116,10 +120,12 @@ export class UserService {
     
     const hashedPassword = await bcrypt.hash(data.password, 10);
     
-    return prisma.$transaction(async (tx) => {
+    const { workingHours, fullName, ...userData } = data;
+    
+    const result = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
-          ...data,
+          ...userData,
           password: hashedPassword,
           role: UserRole.EMPLOYEE,
         },
@@ -127,7 +133,7 @@ export class UserService {
       
       const staff = await tx.staff.create({
         data: {
-          fullName: data.username,
+          fullName: fullName || data.username,
           email: data.email,
           phone: data.phone,
           role: 'Personel',
@@ -138,6 +144,16 @@ export class UserService {
       
       return { user, staffId: staff.id };
     });
+    
+    if (workingHours && workingHours.length > 0) {
+      try {
+        await staffService.setWorkingHours(result.staffId, workingHours);
+      } catch (error) {
+        console.error('Çalışma saatleri eklenirken hata oluştu:', error);
+      }
+    }
+    
+    return result;
   }
 
   async getAllAccounts() {
@@ -266,15 +282,18 @@ export class UserService {
     email?: string;
     phone?: string;
     password?: string;
+    fullName?: string;
+    workingHours?: WorkingHourInput[];
   }) {
     const employee = await this.getEmployeeById(employeeId, accountId);
     if (!employee) {
       throw new Error('Personel bulunamadı veya bu işletmeye ait değil');
     }
 
-    const updateData: any = { ...data };
-    if (data.password) {
-      updateData.password = await bcrypt.hash(data.password, 10);
+    const { workingHours, fullName, ...updateData } = data;
+    
+    if (updateData.password) {
+      updateData.password = await bcrypt.hash(updateData.password, 10);
     }
 
     const updatedUser = await prisma.user.update({
@@ -289,18 +308,40 @@ export class UserService {
       }
     });
 
-    if (data.username || data.email || data.phone) {
-      await prisma.staff.updateMany({
+    // Personel (Staff) bilgilerini güncelle
+    let staffId: number | null = null;
+    
+    if (updateData.username || updateData.email || updateData.phone || fullName) {
+      // Staff kaydını bul
+      const staffRecord = await prisma.staff.findFirst({
         where: { 
           email: employee.email,
           accountId: accountId 
-        },
-        data: {
-          fullName: data.username || employee.username,
-          email: data.email || employee.email,
-          phone: data.phone || employee.phone
         }
       });
+      
+      if (staffRecord) {
+        await prisma.staff.update({
+          where: { id: staffRecord.id },
+          data: {
+            fullName: fullName || updateData.username || employee.username,
+            email: updateData.email || employee.email,
+            phone: updateData.phone || employee.phone
+          }
+        });
+        
+        staffId = staffRecord.id;
+      }
+    }
+    
+    // Çalışma saatlerini güncelle
+    if (workingHours && workingHours.length > 0 && staffId) {
+      try {
+        await staffService.setWorkingHours(staffId, workingHours);
+      } catch (error) {
+        console.error('Çalışma saatleri güncellenirken hata oluştu:', error);
+        // Hata olsa bile devam et, çünkü kullanıcı ve personel bilgileri zaten güncellendi
+      }
     }
 
     return updatedUser;

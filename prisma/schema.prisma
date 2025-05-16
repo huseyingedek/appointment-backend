@@ -30,12 +30,14 @@ model Appointments {
   accountId       Int               @map("AccountID")
   customerName    String            @map("CustomerName")
   serviceId       Int               @map("ServiceID")
+  staffId         Int?              @map("StaffID")
   appointmentDate DateTime          @map("AppointmentDate")
   status          AppointmentStatus @default(Planned) @map("Status")
   notes           String?           @map("Notes")
   createdAt       DateTime          @default(now()) @map("CreatedAt")
   account         Accounts          @relation(fields: [accountId], references: [id])
   service         Services          @relation(fields: [serviceId], references: [id])
+  staff           Staff?            @relation(fields: [staffId], references: [id])
 
   @@map("Appointments")
 }
@@ -45,8 +47,8 @@ model Clients {
   accountId Int      @map("AccountID")
   firstName String   @map("FirstName")
   lastName  String   @map("LastName")
-  phone     String?   @unique @map("Phone")
-  email     String?  @unique @map("Email")
+  phone     String?  @map("Phone")
+  email     String?  @map("Email")
   createdAt DateTime @default(now()) @map("CreatedAt")
   account   Accounts @relation(fields: [accountId], references: [id])
   sales     Sales[]
@@ -112,18 +114,33 @@ model Sessions {
 }
 
 model Staff {
-  id        Int        @id @default(autoincrement()) @map("StaffID")
-  accountId Int        @map("AccountID")
-  fullName  String     @map("FullName")
-  role      String?    @map("Role")
-  phone     String?    @map("Phone")
-  email     String?    @map("Email")
-  isActive  Boolean    @default(true) @map("IsActive")
-  createdAt DateTime   @default(now()) @map("CreatedAt")
-  sessions  Sessions[]
-  account   Accounts   @relation(fields: [accountId], references: [id])
+  id            Int           @id @default(autoincrement()) @map("StaffID")
+  accountId     Int           @map("AccountID")
+  fullName      String        @map("FullName")
+  role          String?       @map("Role")
+  phone         String?       @map("Phone")
+  email         String?       @map("Email")
+  isActive      Boolean       @default(true) @map("IsActive")
+  createdAt     DateTime      @default(now()) @map("CreatedAt")
+  sessions      Sessions[]
+  appointments  Appointments[]
+  workingHours  WorkingHours[]
+  account       Accounts      @relation(fields: [accountId], references: [id])
 
   @@map("Staff")
+}
+
+model WorkingHours {
+  id        Int       @id @default(autoincrement()) @map("WorkingHourID")
+  staffId   Int       @map("StaffID")
+  dayOfWeek Int       @map("DayOfWeek") // 0=Pazar, 1=Pazartesi, ... 6=Cumartesi
+  startTime String    @map("StartTime") // "09:00" formatında
+  endTime   String    @map("EndTime")   // "17:00" formatında
+  isWorking Boolean   @default(true) @map("IsWorking")
+  staff     Staff     @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, dayOfWeek])
+  @@map("WorkingHours")
 }
 
 model User {
@@ -163,5 +180,3 @@ enum UserRole {
   OWNER
   ADMIN
 }
-
-//DATABASE_URL="postgresql://RandevuDB_owner:npg_M5tyC0iuUWpe@ep-steep-rain-a4civ5w7-pooler.us-east-1.aws.neon.tech/RandevuDB?sslmode=require"

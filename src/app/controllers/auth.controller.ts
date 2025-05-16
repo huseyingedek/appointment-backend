@@ -1,4 +1,3 @@
-// src/controllers/authController.ts
 import { Request, Response } from 'express';
 import { UserService, LoginInput } from '../services/user.service';
 import { generateToken } from '../utils/jwt';
@@ -9,7 +8,6 @@ const userService = new UserService();
 const prisma = new PrismaClient();
 
 export class AuthController {
-  // Kullanıcı giriş işlemi
   async login(req: Request, res: Response): Promise<void> {
     try {
       const errors = validationResult(req);
@@ -26,7 +24,6 @@ export class AuthController {
         return;
       }
       
-      // OWNER veya EMPLOYEE için işletme aktiflik kontrolü
       if (user.accountId && (user.role === UserRole.OWNER || user.role === UserRole.EMPLOYEE)) {
         const account = await prisma.accounts.findUnique({
           where: { id: user.accountId }
@@ -49,10 +46,8 @@ export class AuthController {
         }
       }
       
-      // Token oluştur
       const token = generateToken(user);
       
-      // Eğer kullanıcı OWNER veya EMPLOYEE ise hesap bilgilerini getir
       let accountInfo = null;
       if (user.accountId && (user.role === 'OWNER' || user.role === 'EMPLOYEE')) {
         const userWithAccount = await userService.getUserWithAccount(user.id);
@@ -76,7 +71,6 @@ export class AuthController {
     }
   }
 
-  // Mevcut kullanıcı bilgilerini getirme
   async getCurrentUser(req: Request, res: Response): Promise<void> {
     try {
       if (!req.user || !req.user.userId) {
@@ -91,7 +85,6 @@ export class AuthController {
         return;
       }
       
-      // Eğer kullanıcı OWNER veya EMPLOYEE ise hesap bilgilerini getir
       let accountInfo = null;
       if (user.accountId && (user.role === 'OWNER' || user.role === 'EMPLOYEE')) {
         const userWithAccount = await userService.getUserWithAccount(user.id);

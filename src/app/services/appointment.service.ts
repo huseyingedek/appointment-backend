@@ -8,6 +8,7 @@ export interface AppointmentInput {
   appointmentDate: Date;
   notes?: string;
   accountId: number;
+  staffId?: number;
   status?: AppointmentStatus;
 }
 
@@ -22,12 +23,14 @@ export class AppointmentService {
           customerName: data.customerName,
           serviceId: data.serviceId,
           appointmentDate: data.appointmentDate,
+          staffId: data.staffId,
           notes: data.notes,
           accountId: data.accountId,
           status: data.status || AppointmentStatus.Planned
         },
         include: {
-          service: true
+          service: true,
+          staff: true
         }
       });
     } catch (error) {
@@ -41,7 +44,8 @@ export class AppointmentService {
     return await prisma.appointments.findUnique({
       where: { id: appointmentId },
       include: {
-        service: true
+        service: true,
+        staff: true
       }
     });
   }
@@ -51,7 +55,8 @@ export class AppointmentService {
     return await prisma.appointments.findMany({
       where: { accountId },
       include: {
-        service: true
+        service: true,
+        staff: true
       },
       orderBy: { appointmentDate: 'asc' }
     });
@@ -74,7 +79,8 @@ export class AppointmentService {
         }
       },
       include: {
-        service: true
+        service: true,
+        staff: true
       },
       orderBy: { appointmentDate: 'asc' }
     });
@@ -93,7 +99,8 @@ export class AppointmentService {
         status: AppointmentStatus.Planned
       },
       include: {
-        service: true
+        service: true,
+        staff: true
       },
       orderBy: { appointmentDate: 'asc' }
     });
@@ -105,7 +112,8 @@ export class AppointmentService {
       where: { id: appointmentId },
       data,
       include: {
-        service: true
+        service: true,
+        staff: true
       }
     });
   }
@@ -123,7 +131,8 @@ export class AppointmentService {
       where: { id: appointmentId },
       data: { status },
       include: {
-        service: true
+        service: true,
+        staff: true
       }
     });
   }
@@ -136,7 +145,30 @@ export class AppointmentService {
         status
       },
       include: {
-        service: true
+        service: true,
+        staff: true
+      },
+      orderBy: { appointmentDate: 'asc' }
+    });
+  }
+
+  // Müşteri ismi ve hizmet ID'sine göre gelecekteki randevuları getirme
+  async getUpcomingAppointmentsByCustomerAndService(accountId: number, customerName: string, serviceId: number) {
+    const now = new Date();
+    
+    return await prisma.appointments.findMany({
+      where: {
+        accountId,
+        customerName,
+        serviceId,
+        appointmentDate: {
+          gte: now
+        },
+        status: AppointmentStatus.Planned
+      },
+      include: {
+        service: true,
+        staff: true
       },
       orderBy: { appointmentDate: 'asc' }
     });
