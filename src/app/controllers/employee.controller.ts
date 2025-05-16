@@ -182,7 +182,7 @@ export class EmployeeController {
       res.status(200).json({
         success: true,
         employee: extendedEmployee
-      });
+      }); 
     } catch (error) {
       console.error('Get employee error:', error);
       res.status(500).json({ 
@@ -357,30 +357,39 @@ export class EmployeeController {
       const updatedEmployee = await userService.updateEmployee(employeeId, accountId, updateData);
       
       // Güncel personel bilgilerini getir (çalışma saatleriyle birlikte)
-      // @ts-ignore
       const staffRecord = await prisma.staff.findFirst({
         where: { 
           email: updatedEmployee.email,
           accountId
-        },
-        include: {
-          // @ts-ignore - Prisma tip hatalarını geçici olarak yok sayıyoruz
-          workingHours: {
-            orderBy: {
-              dayOfWeek: 'asc'
-            }
-          }
         }
       });
       
-      res.status(200).json({
-        success: true,
-        message: 'Personel bilgileri başarıyla güncellendi',
-        employee: {
-          ...updatedEmployee,
-          staff: staffRecord
-        }
-      });
+      // Çalışma saatlerini ayrıca getir
+      let updatedWorkingHours: WorkingHour[] = [];
+      if (staffRecord) {
+        updatedWorkingHours = await getWorkingHoursForStaff(staffRecord.id);
+        
+        // Güncellenmiş staff verisi
+        const staffWithWorkingHours = {
+          ...staffRecord,
+          workingHours: updatedWorkingHours
+        };
+        
+        res.status(200).json({
+          success: true,
+          message: 'Personel bilgileri başarıyla güncellendi',
+          employee: {
+            ...updatedEmployee,
+            staff: staffWithWorkingHours
+          }
+        });
+      } else {
+        res.status(200).json({
+          success: true,
+          message: 'Personel bilgileri başarıyla güncellendi',
+          employee: updatedEmployee
+        });
+      }
     } catch (error) {
       console.error('Update employee error:', error);
       

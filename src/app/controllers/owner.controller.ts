@@ -19,6 +19,31 @@ const saleService = new SaleService();
 const dashboardService = new DashboardService();
 const staffService = new StaffService();
 
+// İlk 25 satırı korudum, yardımcı fonksiyonumuzu ekliyoruz
+// WorkingHours tipi
+interface WorkingHour {
+  id: number;
+  staffId: number;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  isWorking: boolean;
+}
+
+// Çalışma saatlerini getirmek için yardımcı fonksiyon
+const getWorkingHoursForStaff = async (staffId: number): Promise<WorkingHour[]> => {
+  try {
+    const prisma = new PrismaClient();
+    return await prisma.workingHours.findMany({
+      where: { staffId },
+      orderBy: { dayOfWeek: 'asc' }
+    });
+  } catch (error) {
+    console.error(`WorkingHours fetch error for staffId ${staffId}:`, error);
+    return [];
+  }
+};
+
 export class OwnerController {
   
   async createEmployee(req: Request, res: Response): Promise<void> {
@@ -102,16 +127,21 @@ export class OwnerController {
       const employee = await userService.createEmployee(employeeData, ownerAccountId);
       
       // Personelin detaylı bilgilerini getir (çalışma saatleriyle birlikte)
-      const staffWithDetails = await prisma.staff.findUnique({
-        where: { id: employee.staffId },
-        include: {
-          workingHours: {
-            orderBy: {
-              dayOfWeek: 'asc'
-            }
-          }
-        }
+      const staff = await prisma.staff.findUnique({
+        where: { id: employee.staffId }
       });
+      
+      // Personelin çalışma saatlerini ayrıca getir
+      let staffWorkingHours: WorkingHour[] = [];
+      if (staff) {
+        staffWorkingHours = await getWorkingHoursForStaff(staff.id);
+      }
+      
+      // Staff ve workingHours'ı birleştir
+      const staffWithDetails = {
+        ...staff,
+        workingHours: staffWorkingHours
+      };
       
       res.status(201).json({
         success: true,
@@ -177,18 +207,22 @@ export class OwnerController {
           accountId,
           isActive: true 
         },
-        include: {
-          workingHours: {
-            orderBy: {
-              dayOfWeek: 'asc'
-            }
-          }
-        },
         orderBy: { fullName: 'asc' }
       });
       
+      // Her personel için çalışma saatlerini al
+      const staffWithWorkingHours = await Promise.all(
+        staff.map(async (staffMember) => {
+          const workingHours = await getWorkingHoursForStaff(staffMember.id);
+          return {
+            ...staffMember,
+            workingHours
+          };
+        })
+      );
+      
       // Personelin kullanıcı hesaplarını da getir
-      const staffWithUsers = await Promise.all(staff.map(async (staffMember) => {
+      const staffWithUsers = await Promise.all(staffWithWorkingHours.map(async (staffMember) => {
         // Personelin email'i ile kullanıcı bilgisini bul
         const user = staffMember.email 
           ? await prisma.user.findFirst({
@@ -324,39 +358,69 @@ export class OwnerController {
       }
       
       // Mevcut çalışma saatlerini temizle
-      await prisma.workingHours.deleteMany({
-        where: { staffId }
-      });
+      try {
+        await prisma.workingHours.deleteMany({
+          where: { staffId }
+        });
+      } catch (error) {
+        console.error('Error while deleting working hours:', error);
+        res.status(500).json({
+          success: false,
+          message: 'Mevcut çalışma saatleri silinirken bir hata oluştu'
+        });
+        return;
+      }
       
       // Yeni çalışma saatlerini ekle
-      const createdHours = await Promise.all(workingHours.map(wh => 
-        prisma.workingHours.create({
-          data: {
-            staffId,
-            dayOfWeek: wh.dayOfWeek,
-            startTime: wh.startTime,
-            endTime: wh.endTime,
-            isWorking: wh.isWorking === false ? false : true
-          }
-        })
-      ));
-      
-      // Güncel personel bilgilerini getir
-      const updatedStaff = await prisma.staff.findUnique({
-        where: { id: staffId },
-        include: {
-          workingHours: {
-            orderBy: {
-              dayOfWeek: 'asc'
+      try {
+        for (const hour of workingHours) {
+          await prisma.workingHours.create({
+            data: {
+              staffId,
+              dayOfWeek: hour.dayOfWeek,
+              startTime: hour.startTime,
+              endTime: hour.endTime,
+              isWorking: hour.isWorking
             }
-          }
+          });
         }
+      } catch (error) {
+        console.error('Error while creating working hours:', error);
+        res.status(500).json({
+          success: false,
+          message: 'Çalışma saatleri eklenirken bir hata oluştu'
+        });
+        return;
+      }
+      
+      // Güncellenmiş personel bilgileri için staff objesini getir
+      const updatedStaff = await prisma.staff.findUnique({
+        where: { id: staffId }
       });
+      
+      // Çalışma saatlerini ayrıca getir
+      const updatedWorkingHours = await getWorkingHoursForStaff(staffId);
+      
+      // Türkçe gün adlarını ekle
+      const weekDays = [
+        'Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'
+      ];
+      
+      const formattedWorkingHours = updatedWorkingHours.map(wh => ({
+        ...wh,
+        dayName: weekDays[wh.dayOfWeek]
+      }));
+      
+      // Staff ve workingHours'ı birleştir
+      const staffWithWorkingHours = {
+        ...updatedStaff,
+        workingHours: formattedWorkingHours
+      };
       
       res.status(200).json({
         success: true,
         message: 'Personel çalışma saatleri başarıyla güncellendi',
-        staff: updatedStaff
+        staff: staffWithWorkingHours
       });
     } catch (error) {
       console.error('Set working hours error:', error);
@@ -380,44 +444,17 @@ export class OwnerController {
     try {
       const staffId = parseInt(req.params.staffId, 10);
       
-      // Owner'ın işletme ID'sini al
-      const ownerId = req.user?.userId;
-      if (!ownerId) {
-        res.status(401).json({ 
-          success: false, 
-          message: 'Yetkilendirme başarısız' 
-        });
-        return;
-      }
-      
-      const owner = await userService.findUserById(ownerId);
-      if (!owner) {
-        res.status(404).json({ 
-          success: false, 
-          message: 'Kullanıcı bulunamadı' 
-        });
-        return;
-      }
-      
-      const accountId = owner.accountId;
-      if (!accountId) {
-        res.status(404).json({ 
-          success: false, 
-          message: 'İşletme bilgisi bulunamadı' 
+      if (isNaN(staffId)) {
+        res.status(400).json({
+          success: false,
+          message: 'Geçersiz personel ID'
         });
         return;
       }
       
       // Personelin bu işletmeye ait olup olmadığını kontrol et
       const staff = await prisma.staff.findUnique({
-        where: { id: staffId },
-        include: {
-          workingHours: {
-            orderBy: {
-              dayOfWeek: 'asc'
-            }
-          }
-        }
+        where: { id: staffId }
       });
       
       if (!staff) {
@@ -428,55 +465,44 @@ export class OwnerController {
         return;
       }
       
-      if (staff.accountId !== accountId) {
-        res.status(403).json({
-          success: false,
-          message: 'Bu personel sizin işletmenize ait değil'
+      // Owner'ın işletme ID'sini al ve yetki kontrolü yap
+      const ownerId = req.user?.userId;
+      if (!ownerId) {
+        res.status(401).json({ 
+          success: false, 
+          message: 'Yetkilendirme başarısız' 
         });
         return;
       }
       
-      // Personelin user hesabı bilgisini getir
-      const user = staff.email 
-        ? await prisma.user.findFirst({
-            where: { 
-              email: staff.email,
-              accountId: accountId 
-            },
-            select: {
-              id: true,
-              username: true,
-              email: true,
-              role: true,
-              accountId: true
-            }
-          })
-        : null;
+      const owner = await userService.findUserById(ownerId);
+      if (!owner || owner.accountId !== staff.accountId) {
+        res.status(403).json({ 
+          success: false, 
+          message: 'Bu personele erişim yetkiniz yok' 
+        });
+        return;
+      }
       
+      // Çalışma saatlerini getir
+      const workingHours = await getWorkingHoursForStaff(staffId);
+      
+      // Türkçe gün adlarını ekle
       const weekDays = [
         'Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'
       ];
       
-      // Çalışma saatlerini formatla
-      const formattedWorkingHours = staff.workingHours.map(wh => ({
-        id: wh.id,
-        dayOfWeek: wh.dayOfWeek,
-        dayName: weekDays[wh.dayOfWeek],
-        startTime: wh.startTime,
-        endTime: wh.endTime,
-        isWorking: wh.isWorking
+      const formattedWorkingHours = workingHours.map(wh => ({
+        ...wh,
+        dayName: weekDays[wh.dayOfWeek]
       }));
       
       res.status(200).json({
         success: true,
-        staff: {
-          ...staff,
-          user,
-          workingHours: formattedWorkingHours
-        }
+        workingHours: formattedWorkingHours
       });
     } catch (error) {
-      console.error('Get working hours error:', error);
+      console.error('Get employee working hours error:', error);
       res.status(500).json({ 
         success: false, 
         message: 'Çalışma saatleri alınırken bir hata oluştu' 
