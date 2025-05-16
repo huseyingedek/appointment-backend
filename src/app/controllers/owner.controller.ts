@@ -1221,7 +1221,7 @@ export class OwnerController {
       const appointmentData = {
         customerName: req.body.customerName,
         serviceId: serviceIdNum,
-        staffId: staffId,
+        staffId: staffId,  // staffId alanını tekrar ekleyelim
         appointmentDate: new Date(req.body.appointmentDate),
         notes: req.body.notes,
         accountId,
@@ -1454,6 +1454,7 @@ export class OwnerController {
           return;
         }
         
+        // Şema kontrol edildi, staffId alanı appointments tablosunda var
         updateData.staffId = staffIdNum;
       }
       
@@ -2733,16 +2734,28 @@ export class OwnerController {
       }
       
       // Güncel personel bilgilerini getir
-      const updatedStaffWithDetails = await prisma.staff.findUnique({
-        where: { id: staff.id },
-        include: {
-          workingHours: {
-            orderBy: {
-              dayOfWeek: 'asc'
-            }
-          }
-        }
+      const updatedStaffData = await prisma.staff.findUnique({
+        where: { id: staff.id }
       });
+      
+      // Çalışma saatlerini ayrıca getir
+      const updatedWorkingHours = await getWorkingHoursForStaff(staff.id);
+      
+      // Türkçe gün adlarını ekle
+      const weekDays = [
+        'Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'
+      ];
+      
+      const formattedWorkingHours = updatedWorkingHours.map(wh => ({
+        ...wh,
+        dayName: weekDays[wh.dayOfWeek]
+      }));
+      
+      // Staff ve workingHours verilerini birleştir
+      const updatedStaffWithDetails = {
+        ...updatedStaffData,
+        workingHours: formattedWorkingHours
+      };
       
       res.status(200).json({
         success: true,
@@ -2808,14 +2821,7 @@ export class OwnerController {
       
       // Personel bilgisini getir
       const staff = await prisma.staff.findUnique({
-        where: { id: staffId },
-        include: {
-          workingHours: {
-            orderBy: {
-              dayOfWeek: 'asc'
-            }
-          }
-        }
+        where: { id: staffId }
       });
       
       if (!staff) {
@@ -2833,6 +2839,9 @@ export class OwnerController {
         });
         return;
       }
+      
+      // Çalışma saatlerini manuel olarak getir
+      const workingHours = await getWorkingHoursForStaff(staffId);
       
       // Personelin user hesabı bilgisini getir
       const user = staff.email 
@@ -2857,7 +2866,7 @@ export class OwnerController {
       ];
       
       // Çalışma saatlerini formatla
-      const formattedWorkingHours = staff.workingHours.map(wh => ({
+      const formattedWorkingHours = workingHours.map(wh => ({
         id: wh.id,
         dayOfWeek: wh.dayOfWeek,
         dayName: weekDays[wh.dayOfWeek],
