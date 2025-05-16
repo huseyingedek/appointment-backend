@@ -6,6 +6,29 @@ import { UserRole, PrismaClient } from '@prisma/client';
 const userService = new UserService();
 const prisma = new PrismaClient();
 
+// WorkingHours tipi
+interface WorkingHour {
+  id: number;
+  staffId: number;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  isWorking: boolean;
+}
+
+// Çalışma saatlerini getirmek için yardımcı fonksiyon
+const getWorkingHoursForStaff = async (staffId: number): Promise<WorkingHour[]> => {
+  try {
+    return await prisma.workingHours.findMany({
+      where: { staffId },
+      orderBy: { dayOfWeek: 'asc' }
+    });
+  } catch (error) {
+    console.error(`WorkingHours fetch error for staffId ${staffId}:`, error);
+    return [];
+  }
+};
+
 export class EmployeeController {
   // İşletmeye ait tüm personelleri listeleme
   async getAllEmployees(req: Request, res: Response): Promise<void> {
@@ -34,12 +57,8 @@ export class EmployeeController {
           accountId,
           isActive: true
         },
-        include: {
-          workingHours: {
-            orderBy: {
-              dayOfWeek: 'asc'
-            }
-          }
+        orderBy: {
+          fullName: 'asc' 
         }
       });
       
@@ -47,8 +66,19 @@ export class EmployeeController {
         'Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'
       ];
       
+      // Her personel için çalışma saatlerini manuel olarak al
+      const staffWithWorkingHours = await Promise.all(
+        staffRecords.map(async (staff) => {
+          const workingHours = await getWorkingHoursForStaff(staff.id);
+          return {
+            ...staff,
+            workingHours
+          };
+        })
+      );
+      
       const extendedEmployees = employees.map(emp => {
-        const staffRecord = staffRecords.find(s => s.email === emp.email);
+        const staffRecord = staffWithWorkingHours.find(s => s.email === emp.email);
         
         if (staffRecord && staffRecord.workingHours) {
           const formattedHours = staffRecord.workingHours.map(wh => ({
@@ -118,28 +148,25 @@ export class EmployeeController {
         return;
       }
       
-      // Personelin staff kaydını ve çalışma saatlerini bul
+      // Personelin staff kaydını bul
       const staffRecord = await prisma.staff.findFirst({
         where: { 
           email: employee.email,
           accountId
-        },
-        include: {
-          workingHours: {
-            orderBy: {
-              dayOfWeek: 'asc'
-            }
-          }
         }
       });
       
-      // Çalışma saatlerini formatla
-      if (staffRecord && staffRecord.workingHours) {
+      // Çalışma saatlerini ayrıca getir
+      let workingHours: (WorkingHour & { dayName?: string })[] = [];
+      if (staffRecord) {
+        workingHours = await getWorkingHoursForStaff(staffRecord.id);
+        
+        // Çalışma saatlerini formatla
         const weekDays = [
           'Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'
         ];
         
-        staffRecord.workingHours = staffRecord.workingHours.map(wh => ({
+        workingHours = workingHours.map(wh => ({
           ...wh,
           dayName: weekDays[wh.dayOfWeek]
         }));
@@ -148,7 +175,7 @@ export class EmployeeController {
       // Personel bilgilerine çalışma saatlerini ekle
       const extendedEmployee = {
         ...employee,
-        workingHours: staffRecord?.workingHours || [],
+        workingHours: workingHours || [],
         staffId: staffRecord?.id
       };
       
