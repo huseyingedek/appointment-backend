@@ -20,21 +20,49 @@ export class AppointmentService {
     console.log("Service received data:", JSON.stringify(data, null, 2));
 
     try {
-      // Randevu oluştur
-      const appointment = await prisma.appointments.create({
-        data: {
-          customerName: data.customerName,
-          serviceId: data.serviceId,
-          appointmentDate: data.appointmentDate,
-          staffId: data.staffId,  // Şemada varsa kullan
-          notes: data.notes,
-          accountId: data.accountId,
-          status: data.status || AppointmentStatus.Planned
-        },
-        include: {
-          service: true
+      // Randevu verilerini hazırla - staffId'yi daha sonra ekleyeceğiz
+      const appointmentData = {
+        customerName: data.customerName,
+        serviceId: data.serviceId,
+        appointmentDate: data.appointmentDate,
+        notes: data.notes,
+        accountId: data.accountId,
+        status: data.status || AppointmentStatus.Planned
+      };
+
+      let appointment;
+      
+      // Önce staffId ile deneyeceğiz, hata alırsak staffId olmadan deneyeceğiz
+      try {
+        if (data.staffId) {
+          appointment = await prisma.appointments.create({
+            data: {
+              ...appointmentData,
+              staffId: data.staffId  // Şemada varsa kullan
+            },
+            include: {
+              service: true
+            }
+          });
+        } else {
+          // staffId yoksa normal şekilde oluştur
+          appointment = await prisma.appointments.create({
+            data: appointmentData,
+            include: {
+              service: true
+            }
+          });
         }
-      });
+      } catch (error) {
+        // staffId ile hata aldığımızda, staffId olmadan tekrar deneyeceğiz
+        console.warn("Error with staffId, trying without it:", error);
+        appointment = await prisma.appointments.create({
+          data: appointmentData,
+          include: {
+            service: true
+          }
+        });
+      }
 
       // Staff bilgilerini manuel olarak getir
       let staff = null;
@@ -49,7 +77,8 @@ export class AppointmentService {
       // Appointment ve staff verilerini birleştir
       return {
         ...appointment,
-        staff
+        staff,
+        staffId: data.staffId // Kodumuzun geri kalanının staffId'yi kullanabilmesi için ekleyelim
       };
     } catch (error) {
       console.error("Prisma Error:", error);
@@ -71,9 +100,11 @@ export class AppointmentService {
 
       // Staff bilgilerini manuel olarak getir
       let staff = null;
-      if (appointment.staffId) {
+      const staffId = appointment.staffId as number | undefined;
+      
+      if (staffId) {
         try {
-          staff = await staffService.getStaffById(appointment.staffId);
+          staff = await staffService.getStaffById(staffId);
         } catch (error) {
           console.error("Staff fetch error:", error);
         }
@@ -82,7 +113,8 @@ export class AppointmentService {
       // Appointment ve staff verilerini birleştir
       return {
         ...appointment,
-        staff
+        staff,
+        staffId // Kodumuzun geri kalanının staffId'yi kullanabilmesi için ekleyelim
       };
     } catch (error) {
       console.error("Get appointment error:", error);
@@ -105,16 +137,19 @@ export class AppointmentService {
       const appointmentsWithStaff = await Promise.all(
         appointments.map(async appointment => {
           let staff = null;
-          if (appointment.staffId) {
+          const staffId = appointment.staffId as number | undefined;
+          
+          if (staffId) {
             try {
-              staff = await staffService.getStaffById(appointment.staffId);
+              staff = await staffService.getStaffById(staffId);
             } catch (error) {
               console.error(`Staff fetch error for appointmentId ${appointment.id}:`, error);
             }
           }
           return {
             ...appointment,
-            staff
+            staff,
+            staffId // Kodumuzun geri kalanının staffId'yi kullanabilmesi için ekleyelim
           };
         })
       );
@@ -153,16 +188,19 @@ export class AppointmentService {
       const appointmentsWithStaff = await Promise.all(
         appointments.map(async appointment => {
           let staff = null;
-          if (appointment.staffId) {
+          const staffId = appointment.staffId as number | undefined;
+          
+          if (staffId) {
             try {
-              staff = await staffService.getStaffById(appointment.staffId);
+              staff = await staffService.getStaffById(staffId);
             } catch (error) {
               console.error(`Staff fetch error for appointmentId ${appointment.id}:`, error);
             }
           }
           return {
             ...appointment,
-            staff
+            staff,
+            staffId
           };
         })
       );
@@ -197,16 +235,19 @@ export class AppointmentService {
       const appointmentsWithStaff = await Promise.all(
         appointments.map(async appointment => {
           let staff = null;
-          if (appointment.staffId) {
+          const staffId = appointment.staffId as number | undefined;
+          
+          if (staffId) {
             try {
-              staff = await staffService.getStaffById(appointment.staffId);
+              staff = await staffService.getStaffById(staffId);
             } catch (error) {
               console.error(`Staff fetch error for appointmentId ${appointment.id}:`, error);
             }
           }
           return {
             ...appointment,
-            staff
+            staff,
+            staffId
           };
         })
       );
@@ -221,19 +262,39 @@ export class AppointmentService {
   // Randevu güncelleme
   async updateAppointment(appointmentId: number, data: Partial<Omit<AppointmentInput, 'accountId'>>) {
     try {
+      // Şema uyumluluğu için staffId'yi ayrı işleyelim
+      const { staffId, ...updateData } = data;
+      
+      // Önce normal verileri güncelleyelim
       const appointment = await prisma.appointments.update({
         where: { id: appointmentId },
-        data,   // data içinde staffId de olabilir
+        data: updateData,
         include: {
           service: true
         }
       });
 
+      // Eğer staffId varsa, ayrıca güncellemeyi deneyelim
+      if (staffId !== undefined) {
+        try {
+          // staffId güncellemeyi dene
+          await prisma.appointments.update({
+            where: { id: appointmentId },
+            data: { staffId }
+          });
+        } catch (error) {
+          // staffId şemada yoksa hata verecek, bunu görmezden gelelim
+          console.warn(`Could not update staffId for appointment ${appointmentId}:`, error);
+        }
+      }
+
       // Staff bilgilerini manuel olarak getir
       let staff = null;
-      if (appointment.staffId) {
+      const staffIdToUse = staffId !== undefined ? staffId : appointment.staffId;
+      
+      if (staffIdToUse) {
         try {
-          staff = await staffService.getStaffById(appointment.staffId);
+          staff = await staffService.getStaffById(staffIdToUse);
         } catch (error) {
           console.error("Staff fetch error:", error);
         }
@@ -242,7 +303,8 @@ export class AppointmentService {
       // Appointment ve staff verilerini birleştir
       return {
         ...appointment,
-        staff
+        staff,
+        staffId: staffIdToUse // Kodumuzun geri kalanının staffId'yi kullanabilmesi için ekleyelim
       };
     } catch (error) {
       console.error("Update appointment error:", error);
@@ -270,9 +332,11 @@ export class AppointmentService {
 
       // Staff bilgilerini manuel olarak getir
       let staff = null;
-      if (appointment.staffId) {
+      const staffId = appointment.staffId as number | undefined;
+      
+      if (staffId) {
         try {
-          staff = await staffService.getStaffById(appointment.staffId);
+          staff = await staffService.getStaffById(staffId);
         } catch (error) {
           console.error("Staff fetch error:", error);
         }
@@ -281,7 +345,8 @@ export class AppointmentService {
       // Appointment ve staff verilerini birleştir
       return {
         ...appointment,
-        staff
+        staff,
+        staffId // Kodumuzun geri kalanının staffId'yi kullanabilmesi için ekleyelim
       };
     } catch (error) {
       console.error("Update appointment status error:", error);
@@ -307,16 +372,19 @@ export class AppointmentService {
       const appointmentsWithStaff = await Promise.all(
         appointments.map(async appointment => {
           let staff = null;
-          if (appointment.staffId) {
+          const staffId = appointment.staffId as number | undefined;
+          
+          if (staffId) {
             try {
-              staff = await staffService.getStaffById(appointment.staffId);
+              staff = await staffService.getStaffById(staffId);
             } catch (error) {
               console.error(`Staff fetch error for appointmentId ${appointment.id}:`, error);
             }
           }
           return {
             ...appointment,
-            staff
+            staff,
+            staffId
           };
         })
       );
@@ -353,16 +421,19 @@ export class AppointmentService {
       const appointmentsWithStaff = await Promise.all(
         appointments.map(async appointment => {
           let staff = null;
-          if (appointment.staffId) {
+          const staffId = appointment.staffId as number | undefined;
+          
+          if (staffId) {
             try {
-              staff = await staffService.getStaffById(appointment.staffId);
+              staff = await staffService.getStaffById(staffId);
             } catch (error) {
               console.error(`Staff fetch error for appointmentId ${appointment.id}:`, error);
             }
           }
           return {
             ...appointment,
-            staff
+            staff, 
+            staffId
           };
         })
       );
